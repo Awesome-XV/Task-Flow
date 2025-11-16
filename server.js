@@ -37,6 +37,20 @@ function saveDB() {
 // Initialize database
 loadDB();
 
+// Helper function to get local date string (YYYY-MM-DD)
+function getLocalDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Helper function to get local datetime ISO string
+function getLocalISOString() {
+  return new Date().toLocaleString('en-US', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+}
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -554,7 +568,15 @@ app.post('/api/sleep-schedule', (req, res) => {
 app.post('/api/schedule/generate', (req, res) => {
   try {
     const { date } = req.body; // Optional specific date, defaults to today
-    const targetDate = date ? new Date(date) : new Date();
+    
+    // Parse date correctly to avoid timezone issues
+    let targetDate;
+    if (date) {
+      const [year, month, day] = date.split('-').map(Number);
+      targetDate = new Date(year, month - 1, day); // Create date in local timezone
+    } else {
+      targetDate = new Date();
+    }
     
     const schedule = generateSmartSchedule(targetDate);
     res.json(schedule);
@@ -663,37 +685,77 @@ app.post('/api/calendar/import', (req, res) => {
       return res.status(400).json({ error: 'ICS content is required' });
     }
     
+    // Ensure arrays exist
+    if (!db.recurring_events) db.recurring_events = [];
+    if (!db.tasks) db.tasks = [];
+    
     // Parse ICS content (basic parsing)
     const events = parseICS(icsContent);
-    const imported = [];
+    
+    if (events.length === 0) {
+      return res.status(400).json({ error: 'No valid events found in the calendar file' });
+    }
+    
+    const importedRecurring = [];
+    const importedTasks = [];
     
     for (const event of events) {
-      const recurringEvent = {
-        id: uuidv4(),
-        name: event.summary,
-        start_time: event.startTime,
-        duration: event.duration,
-        pattern: event.recurring ? 'weekly' : 'daily',
-        days: event.days || [],
-        created_at: new Date().toISOString()
-      };
-      
-      db.recurring_events.push(recurringEvent);
-      imported.push(recurringEvent);
+      // If event has a recurrence rule, add as recurring event
+      if (event.recurring && event.startTime) {
+        const recurringEvent = {
+          id: uuidv4(),
+          name: event.summary,
+          start_time: event.startTime,
+          duration: event.duration || 1,
+          pattern: event.pattern || 'weekly',
+          days: event.days || [],
+          created_at: new Date().toISOString()
+        };
+        
+        db.recurring_events.push(recurringEvent);
+        importedRecurring.push(recurringEvent);
+      } 
+      // Otherwise add as a one-time task
+      else if (event.summary) {
+        const task = {
+          id: uuidv4(),
+          title: event.summary,
+          description: event.description || '',
+          type: 'activity',
+          priority: 'medium',
+          status: 'pending',
+          due_date: event.dueDate || new Date().toISOString(),
+          estimated_hours: event.duration || null,
+          completed_hours: 0,
+          energy_level: null,
+          created_at: new Date().toISOString(),
+          completed_at: null
+        };
+        
+        db.tasks.push(task);
+        importedTasks.push(task);
+      }
     }
     
     saveDB();
-    res.json({ imported: imported.length, events: imported });
+    res.json({ 
+      imported: importedRecurring.length + importedTasks.length,
+      recurring: importedRecurring.length,
+      tasks: importedTasks.length,
+      events: [...importedRecurring, ...importedTasks]
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Calendar import error:', error);
+    res.status(500).json({ error: 'Failed to parse calendar file: ' + error.message });
   }
 });
 
 // Simple ICS parser helper
 function parseICS(icsContent) {
   const events = [];
-  const lines = icsContent.split('\n');
+  const lines = icsContent.split(/\r?\n/); // Handle both \n and \r\n
   let currentEvent = null;
+  const todayStr = getLocalDateString(); // Use local date instead of UTC
   
   for (let line of lines) {
     line = line.trim();
@@ -701,32 +763,64 @@ function parseICS(icsContent) {
     if (line === 'BEGIN:VEVENT') {
       currentEvent = {};
     } else if (line === 'END:VEVENT' && currentEvent) {
-      if (currentEvent.summary) {
+      // Only add events that are today or in the future
+      if (currentEvent.summary && currentEvent.dueDate && currentEvent.dueDate >= todayStr) {
+        events.push(currentEvent);
+      } else if (currentEvent.summary && currentEvent.recurring) {
+        // Always include recurring events regardless of date
         events.push(currentEvent);
       }
       currentEvent = null;
     } else if (currentEvent) {
       if (line.startsWith('SUMMARY:')) {
-        currentEvent.summary = line.substring(8);
+        currentEvent.summary = line.substring(8).trim();
+      } else if (line.startsWith('DESCRIPTION:')) {
+        currentEvent.description = line.substring(12).trim();
       } else if (line.startsWith('DTSTART')) {
-        const timeMatch = line.match(/T(\d{2})(\d{2})/);
-        if (timeMatch) {
-          currentEvent.startTime = `${timeMatch[1]}:${timeMatch[2]}`;
+        // Handle both date-time and date-only formats
+        // Format: DTSTART:20250116T140000Z or DTSTART;VALUE=DATE:20250116
+        const dateMatch = line.match(/(\d{8})(T(\d{2})(\d{2}))?/);
+        if (dateMatch) {
+          const year = dateMatch[1].substring(0, 4);
+          const month = dateMatch[1].substring(4, 6);
+          const day = dateMatch[1].substring(6, 8);
+          currentEvent.dueDate = `${year}-${month}-${day}`;
+          
+          if (dateMatch[3] && dateMatch[4]) {
+            // Has time component
+            currentEvent.startTime = `${dateMatch[3]}:${dateMatch[4]}`;
+          } else {
+            // All-day event, set default time
+            currentEvent.startTime = '09:00';
+          }
         }
       } else if (line.startsWith('DTEND')) {
-        const timeMatch = line.match(/T(\d{2})(\d{2})/);
-        if (timeMatch && currentEvent.startTime) {
+        const dateMatch = line.match(/T(\d{2})(\d{2})/);
+        if (dateMatch && currentEvent.startTime) {
           const startHour = parseInt(currentEvent.startTime.split(':')[0]);
-          const endHour = parseInt(timeMatch[1]);
-          currentEvent.duration = endHour - startHour;
+          const endHour = parseInt(dateMatch[1]);
+          currentEvent.duration = Math.max(1, endHour - startHour);
+        } else {
+          // Default duration for all-day events
+          currentEvent.duration = 1;
         }
       } else if (line.startsWith('RRULE')) {
         currentEvent.recurring = true;
-        if (line.includes('BYDAY=')) {
-          const dayMatch = line.match(/BYDAY=([^;]+)/);
-          if (dayMatch) {
-            const dayMap = { MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0 };
-            currentEvent.days = dayMatch[1].split(',').map(d => dayMap[d.trim()] || 0);
+        
+        // Check for daily pattern
+        if (line.includes('FREQ=DAILY')) {
+          currentEvent.pattern = 'daily';
+          currentEvent.days = [0, 1, 2, 3, 4, 5, 6]; // All days
+        }
+        // Check for weekly pattern
+        else if (line.includes('FREQ=WEEKLY')) {
+          currentEvent.pattern = 'weekly';
+          if (line.includes('BYDAY=')) {
+            const dayMatch = line.match(/BYDAY=([^;]+)/);
+            if (dayMatch) {
+              const dayMap = { MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0 };
+              currentEvent.days = dayMatch[1].split(',').map(d => dayMap[d.trim()] || 0);
+            }
           }
         }
       }
@@ -744,9 +838,10 @@ function generateSmartSchedule(targetDate) {
   const dayOfWeek = targetDate.getDay();
   const dateStr = targetDate.toISOString().split('T')[0];
   
-  // Check if this is today and get current hour
+  // Check if this is today and get current hour (using local time)
   const now = new Date();
-  const isToday = dateStr === now.toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
+  const isToday = dateStr === todayStr;
   const currentHour = now.getHours();
   
   // Get sleep schedule constraints
@@ -769,11 +864,42 @@ function generateSmartSchedule(targetDate) {
     return event;
   });
   
-  // Get tasks that need scheduling
-  const pendingTasks = db.tasks.filter(t => 
-    t.status !== 'completed' && 
-    (!t.due_date || new Date(t.due_date) >= targetDate)
-  );
+  // Get tasks that need scheduling - smart filtering based on urgency and availability
+  const pendingTasks = db.tasks.filter(t => {
+    if (t.status === 'completed') return false;
+    
+    // Tasks without due date or estimated hours can be scheduled anytime
+    if (!t.due_date) return true;
+    
+    const taskDueDate = new Date(t.due_date);
+    taskDueDate.setHours(0, 0, 0, 0);
+    const target = new Date(targetDate);
+    target.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Don't schedule tasks due in the future (more than 7 days away)
+    if (taskDueDate > target) return false;
+    
+    // Always include tasks that are overdue or due today
+    if (taskDueDate <= target) {
+      // For tasks with estimated hours, check if they should be scheduled earlier
+      const estimatedHours = t.estimated_hours || 1;
+      const daysUntilDue = Math.max(0, (taskDueDate - today) / (1000 * 60 * 60 * 24));
+      const daysFromTodayToTarget = Math.max(0, (target - today) / (1000 * 60 * 60 * 24));
+      
+      // If task needs more hours than can fit in remaining days (assuming 6 work hours/day)
+      // then start scheduling it earlier
+      const hoursPerDay = 6;
+      const daysNeeded = Math.ceil(estimatedHours / hoursPerDay);
+      const earliestStartDay = Math.max(0, daysUntilDue - daysNeeded);
+      
+      // Include task if target date is within the working period
+      return daysFromTodayToTarget >= earliestStartDay;
+    }
+    
+    return false;
+  });
   
   // Get energy patterns for this day
   const energyForDay = (db.energy_patterns || [])
@@ -824,30 +950,81 @@ function generateSmartSchedule(targetDate) {
     }
   }
   
-  // Smart task scheduling
+  // Smart task scheduling with proper time distribution
   const scheduledTasks = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(targetDate);
+  target.setHours(0, 0, 0, 0);
+  
   const sortedTasks = [...pendingTasks].sort((a, b) => {
-    // Prioritize by: urgency > priority > energy match
-    const urgencyA = a.due_date ? (new Date(a.due_date) - targetDate) / (1000 * 60 * 60 * 24) : 999;
-    const urgencyB = b.due_date ? (new Date(b.due_date) - targetDate) / (1000 * 60 * 60 * 24) : 999;
+    // Calculate urgency and work density for each task
+    const daysUntilDueA = a.due_date ? Math.max(0, (new Date(a.due_date) - today) / (1000 * 60 * 60 * 24)) : 999;
+    const daysUntilDueB = b.due_date ? Math.max(0, (new Date(b.due_date) - today) / (1000 * 60 * 60 * 24)) : 999;
+    const hoursA = a.estimated_hours || 1;
+    const hoursB = b.estimated_hours || 1;
     
-    if (urgencyA < 3 && urgencyB >= 3) return -1;
-    if (urgencyB < 3 && urgencyA >= 3) return 1;
+    // Calculate "hours per day until due" - higher = more urgent
+    const urgencyA = daysUntilDueA > 0 ? hoursA / daysUntilDueA : 999;
+    const urgencyB = daysUntilDueB > 0 ? hoursB / daysUntilDueB : 999;
     
+    // Sort by urgency first
+    if (Math.abs(urgencyA - urgencyB) > 1) {
+      return urgencyB - urgencyA;
+    }
+    
+    // Then by priority
     const priorityMap = { high: 3, medium: 2, low: 1 };
-    return priorityMap[b.priority] - priorityMap[a.priority];
+    const priorityDiff = priorityMap[b.priority || 'medium'] - priorityMap[a.priority || 'medium'];
+    if (priorityDiff !== 0) return priorityDiff;
+    
+    // Finally by due date (sooner first)
+    return daysUntilDueA - daysUntilDueB;
   });
   
   let slotIndex = 0;
+  const maxHoursPerDay = Math.floor(timeSlots.length * 0.7); // Don't overschedule - leave 30% buffer
+  let hoursScheduledToday = 0;
+  
   for (const task of sortedTasks) {
-    if (slotIndex >= timeSlots.length) break;
+    if (slotIndex >= timeSlots.length || hoursScheduledToday >= maxHoursPerDay) break;
     
-    const requiredSlots = Math.ceil((task.estimated_hours || 1) / 1);
+    const estimatedHours = task.estimated_hours || 1;
+    const daysUntilDue = task.due_date ? Math.max(0, (new Date(task.due_date) - today) / (1000 * 60 * 60 * 24)) : 999;
+    const daysFromTodayToTarget = Math.max(0, (target - today) / (1000 * 60 * 60 * 24));
+    
+    // Calculate how much to schedule today based on remaining time
+    let hoursToScheduleToday;
+    if (daysUntilDue <= 1) {
+      // Due today or overdue - schedule as much as possible
+      hoursToScheduleToday = Math.min(estimatedHours - (task.completed_hours || 0), timeSlots.length - slotIndex);
+    } else {
+      // Spread work over remaining days
+      const remainingHours = estimatedHours - (task.completed_hours || 0);
+      const hoursPerDay = 6; // Average productive hours per day
+      const daysNeeded = Math.ceil(remainingHours / hoursPerDay);
+      
+      // If we're in the working period for this task
+      if (daysFromTodayToTarget >= (daysUntilDue - daysNeeded) && daysFromTodayToTarget <= daysUntilDue) {
+        hoursToScheduleToday = Math.min(
+          Math.ceil(remainingHours / Math.max(1, daysUntilDue - daysFromTodayToTarget + 1)),
+          maxHoursPerDay - hoursScheduledToday,
+          timeSlots.length - slotIndex
+        );
+      } else {
+        // Not in working period yet, skip
+        continue;
+      }
+    }
+    
+    if (hoursToScheduleToday <= 0) continue;
+    
+    const requiredSlots = Math.ceil(hoursToScheduleToday);
     
     // Find best time slot based on energy level
     let bestSlotIndex = slotIndex;
     if (task.energy_level) {
-      for (let i = slotIndex; i < timeSlots.length - requiredSlots + 1; i++) {
+      for (let i = slotIndex; i < Math.min(timeSlots.length - requiredSlots + 1, timeSlots.length); i++) {
         if (timeSlots[i].energy === task.energy_level) {
           bestSlotIndex = i;
           break;
@@ -859,9 +1036,6 @@ function generateSmartSchedule(targetDate) {
       const startSlot = timeSlots[bestSlotIndex];
       const endSlot = timeSlots[Math.min(bestSlotIndex + requiredSlots - 1, timeSlots.length - 1)];
       
-      // Calculate urgency
-      const daysUntilDue = task.due_date ? (new Date(task.due_date) - targetDate) / (1000 * 60 * 60 * 24) : 999;
-      
       scheduledTasks.push({
         task_id: task.id,
         task,
@@ -871,12 +1045,15 @@ function generateSmartSchedule(targetDate) {
         energy_level: startSlot.energy,
         reason: task.energy_level === startSlot.energy 
           ? 'Optimal energy match' 
-          : daysUntilDue < 3 
-            ? 'Urgent deadline' 
-            : 'Best available slot'
+          : daysUntilDue <= 1
+            ? 'Due today/overdue' 
+            : daysUntilDue <= 3
+              ? 'Due soon - spreading work'
+              : 'Scheduled ahead to avoid cramming'
       });
       
       slotIndex = bestSlotIndex + requiredSlots;
+      hoursScheduledToday += requiredSlots;
     }
   }
   

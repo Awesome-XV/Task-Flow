@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="toast-container"></div>
+  
   <div class="container">
     <!-- Header -->
     <header class="header">
@@ -189,10 +192,15 @@
         <!-- Recurring Events View -->
         <div id="recurring-view" class="view">
           <div class="view-header">
-            <h2>Recurring Events</h2>
-            <button class="btn btn-primary" id="add-recurring-event-btn">+ Add Recurring Event</button>
+            <div class="view-title-section">
+              <h2>🔄 Recurring Events</h2>
+              <p class="view-subtitle">Manage your regular classes, meetings, and activities</p>
+            </div>
+            <button class="btn btn-primary" id="add-recurring-event-btn">
+              <span class="btn-icon">+</span> Add Recurring Event
+            </button>
           </div>
-          <div id="recurring-container" class="tasks-grid">
+          <div id="recurring-container" class="recurring-grid">
             <!-- Recurring events will be loaded here -->
           </div>
         </div>

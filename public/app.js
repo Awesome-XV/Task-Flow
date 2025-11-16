@@ -19,11 +19,15 @@ document.addEventListener('DOMContentLoaded', () => {
   loadRecurringEvents();
   loadSleepSchedule();
   
-  // Set today's date as default
-  const today = new Date().toISOString().split('T')[0];
+  // Set today's date as default (using local time)
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
   const scheduleDate = document.getElementById('schedule-date');
   if (scheduleDate) {
-    scheduleDate.value = today;
+    scheduleDate.value = todayStr;
   }
 });
 
@@ -357,8 +361,6 @@ async function updateTask(id, taskData) {
 }
 
 async function deleteTask(id) {
-  if (!confirm('Are you sure you want to delete this task?')) return;
-  
   console.log('🗑️ Deleting task:', id);
   try {
     const response = await fetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
@@ -371,6 +373,7 @@ async function deleteTask(id) {
     tasks = tasks.filter(t => t.id !== id);
     renderTasks(tasks);
     loadStats();
+    showSuccess('Task deleted successfully');
   } catch (error) {
     console.error('❌ Error deleting task:', error);
     showError('Failed to delete task');
@@ -510,11 +513,51 @@ function renderTasks(tasksToRender) {
 }
 
 function createTaskCard(task) {
-  const dueDate = task.due_date ? new Date(task.due_date) : null;
-  const isOverdue = dueDate && dueDate < new Date() && task.status !== 'completed';
-  const dueDateStr = dueDate ? dueDate.toLocaleDateString('en-US', { 
-    month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' 
-  }) : 'No due date';
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  let dueDate = null;
+  let dueDateStr = 'No due date';
+  let isOverdue = false;
+  
+  if (task.due_date) {
+    // Parse the date correctly to avoid timezone issues
+    const dueDateParts = task.due_date.split('T')[0].split('-');
+    dueDate = new Date(dueDateParts[0], dueDateParts[1] - 1, dueDateParts[2]);
+    
+    const taskDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+    const timeDiff = taskDate - today;
+    const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+    
+    // Format the date display
+    if (daysDiff === 0) {
+      dueDateStr = 'Today';
+    } else if (daysDiff === 1) {
+      dueDateStr = 'Tomorrow';
+    } else if (daysDiff === -1) {
+      dueDateStr = 'Yesterday';
+    } else if (daysDiff > 1 && daysDiff <= 7) {
+      dueDateStr = dueDate.toLocaleDateString('en-US', { weekday: 'long' });
+    } else {
+      dueDateStr = dueDate.toLocaleDateString('en-US', { 
+        month: 'short', day: 'numeric', year: 'numeric'
+      });
+    }
+    
+    // Add time if present
+    if (task.due_date.includes('T')) {
+      const timeMatch = task.due_date.match(/T(\d{2}):(\d{2})/);
+      if (timeMatch) {
+        const hour = parseInt(timeMatch[1]);
+        const min = timeMatch[2];
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+        dueDateStr += `, ${displayHour}:${min} ${period}`;
+      }
+    }
+    
+    isOverdue = taskDate < today && task.status !== 'completed';
+  }
 
   return `
     <div class="task-card priority-${task.priority}" data-task-id="${task.id}">
@@ -859,12 +902,37 @@ function escapeHtml(text) {
 
 function showSuccess(message) {
   console.log('✅', message);
-  alert(message); // TODO: Replace with toast notification
+  showToast(message, 'success');
 }
 
 function showError(message) {
   console.error('❌', message);
-  alert('Error: ' + message); // TODO: Replace with toast notification
+  showToast(message, 'error');
+}
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  
+  const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+  
+  toast.innerHTML = `
+    <div class="toast-icon">${icon}</div>
+    <div class="toast-message">${escapeHtml(message)}</div>
+    <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+  `;
+  
+  container.appendChild(toast);
+  
+  // Trigger animation
+  setTimeout(() => toast.classList.add('show'), 10);
+  
+  // Auto remove after 5 seconds
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 5000);
 }
 
 // ============================================
@@ -991,13 +1059,11 @@ async function handleRecurringSubmit(e) {
 }
 
 async function deleteRecurringEvent(id) {
-  if (!confirm('Delete this recurring event?')) return;
-  
   try {
     await fetch(`${API_URL}/recurring-events/${id}`, { method: 'DELETE' });
     recurringEvents = recurringEvents.filter(e => e.id !== id);
     renderRecurringEvents();
-    showSuccess('Event deleted');
+    showSuccess('Event deleted successfully');
   } catch (error) {
     showError('Failed to delete event');
   }
@@ -1008,37 +1074,67 @@ function renderRecurringEvents() {
   
   if (recurringEvents.length === 0) {
     container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state-icon">🔄</div>
-        <h3>No recurring events</h3>
-        <p>Add recurring events like classes, work shifts, or regular activities.</p>
+      <div class="empty-state-modern">
+        <div class="empty-icon-circle">
+          <span class="empty-icon">🔄</span>
+        </div>
+        <h3 class="empty-title">No recurring events yet</h3>
+        <p class="empty-description">Add recurring events like classes, work shifts, or regular activities to keep track of your schedule.</p>
       </div>
     `;
     return;
   }
   
-  container.innerHTML = recurringEvents.map(event => `
-    <div class="recurring-card">
-      <div class="recurring-header">
-        <span class="recurring-type ${event.type}">${event.type}</span>
-        <div class="task-actions">
-          <button class="icon-btn" onclick="openRecurringModal(${JSON.stringify(event).replace(/"/g, '&quot;')})">✏️</button>
-          <button class="icon-btn" onclick="deleteRecurringEvent('${event.id}')">🗑️</button>
+  container.innerHTML = recurringEvents.map(event => {
+    const dayLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const pattern = event.pattern || event.recurrence_pattern || 'weekly';
+    const days = event.days || event.days_of_week || [];
+    const startTime = formatTime12Hour(event.start_time);
+    const endTime = event.end_time ? formatTime12Hour(event.end_time) : null;
+    const duration = event.duration || 1;
+    
+    return `
+      <div class="recurring-card-modern">
+        <div class="recurring-card-header">
+          <div class="recurring-name-section">
+            <h3 class="recurring-name">${escapeHtml(event.name || event.title)}</h3>
+            <span class="recurring-pattern-badge">${pattern === 'daily' ? '📅 Daily' : '📆 Weekly'}</span>
+          </div>
+          <div class="recurring-actions">
+            <button class="action-btn edit-btn" onclick="openRecurringModal(${JSON.stringify(event).replace(/"/g, '&quot;')})" title="Edit">
+              <span>✏️</span>
+            </button>
+            <button class="action-btn delete-btn" onclick="deleteRecurringEvent('${event.id}')" title="Delete">
+              <span>🗑️</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="recurring-card-body">
+          <div class="recurring-info-row">
+            <div class="info-item">
+              <span class="info-icon">🕐</span>
+              <span class="info-text">${startTime}${endTime ? ' - ' + endTime : ` (${duration}h)`}</span>
+            </div>
+          </div>
+          
+          ${pattern === 'weekly' && days.length > 0 ? `
+            <div class="recurring-days">
+              ${[0,1,2,3,4,5,6].map(d => `
+                <span class="day-badge ${days.includes(d) ? 'active' : ''}">
+                  ${dayLabels[d]}
+                </span>
+              `).join('')}
+            </div>
+          ` : pattern === 'daily' ? `
+            <div class="recurring-days">
+              <span class="daily-indicator">Every day</span>
+            </div>
+          ` : ''}
         </div>
       </div>
-      <h3 class="recurring-title">${escapeHtml(event.title)}</h3>
-      ${event.description ? `<p class="task-description">${escapeHtml(event.description)}</p>` : ''}
-      <div class="recurring-details">
-        <span>🕐 ${event.start_time} - ${event.end_time}</span>
-        <span>🔄 ${event.recurrence_pattern}</span>
-      </div>
-      ${event.recurrence_pattern === 'weekly' && event.days_of_week.length > 0 ? `
-        <div class="recurring-pattern">
-          📅 ${event.days_of_week.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ')}
-        </div>
-      ` : ''}
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 // Sleep Schedule
@@ -1116,19 +1212,32 @@ async function importFromICS() {
       body: JSON.stringify({ icsContent })
     });
     
+    const result = await response.json();
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(result.error || 'Import failed');
     }
     
-    const result = await response.json();
-    showSuccess(`Imported ${result.imported} events as recurring events!`);
+    // Show detailed success message
+    let message = `Successfully imported ${result.imported} events!`;
+    if (result.tasks > 0 && result.recurring > 0) {
+      message = `Imported ${result.tasks} one-time events as tasks and ${result.recurring} recurring events!`;
+    } else if (result.tasks > 0) {
+      message = `Imported ${result.tasks} events as tasks!`;
+    } else if (result.recurring > 0) {
+      message = `Imported ${result.recurring} recurring events!`;
+    }
     
+    showSuccess(message);
+    
+    // Reload both tasks and recurring events
+    await loadTasks();
     await loadRecurringEvents();
     closeModal('google-modal');
     fileInput.value = ''; // Clear file input
   } catch (error) {
     console.error('Error importing ICS:', error);
-    showError('Failed to import calendar file. Make sure it\'s a valid ICS file.');
+    showError(error.message || 'Failed to import calendar file. Make sure it\'s a valid ICS file.');
   }
 }
 
