@@ -2,90 +2,62 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
-const Database = require('better-sqlite3');
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// JSON Database (simple file-based storage)
+const DB_FILE = 'taskflow-data.json';
+let db = {
+  tasks: [],
+  subtasks: [],
+  energy_patterns: [],
+  study_sessions: []
+};
+
+// Load database from file
+function loadDB() {
+  if (fs.existsSync(DB_FILE)) {
+    const data = fs.readFileSync(DB_FILE, 'utf8');
+    db = JSON.parse(data);
+  }
+}
+
+// Save database to file
+function saveDB() {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+}
+
 // Initialize database
-const db = new Database('taskflow.db');
-db.pragma('journal_mode = WAL');
+loadDB();
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// Initialize database tables
-const initDB = () => {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT,
-      type TEXT NOT NULL,
-      priority TEXT DEFAULT 'medium',
-      status TEXT DEFAULT 'pending',
-      due_date TEXT,
-      estimated_hours REAL,
-      completed_hours REAL DEFAULT 0,
-      energy_level TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      completed_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS subtasks (
-      id TEXT PRIMARY KEY,
-      parent_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      status TEXT DEFAULT 'pending',
-      order_index INTEGER,
-      FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS energy_patterns (
-      id TEXT PRIMARY KEY,
-      user_id TEXT DEFAULT 'default',
-      day_of_week INTEGER,
-      hour INTEGER,
-      energy_level TEXT,
-      recorded_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS study_sessions (
-      id TEXT PRIMARY KEY,
-      task_id TEXT,
-      start_time TEXT,
-      end_time TEXT,
-      duration_minutes INTEGER,
-      energy_level TEXT,
-      productivity_rating INTEGER,
-      FOREIGN KEY (task_id) REFERENCES tasks(id)
-    );
-  `);
-};
-
-initDB();
-
 // API Routes
 
 // Get all tasks
 app.get('/api/tasks', (req, res) => {
   try {
-    const tasks = db.prepare(`
-      SELECT * FROM tasks 
-      ORDER BY due_date ASC, priority DESC
-    `).all();
-
     // Get subtasks for each task
-    const tasksWithSubtasks = tasks.map(task => {
-      const subtasks = db.prepare(`
-        SELECT * FROM subtasks 
-        WHERE parent_id = ? 
-        ORDER BY order_index ASC
-      `).all(task.id);
+    const tasksWithSubtasks = db.tasks.map(task => {
+      const subtasks = db.subtasks.filter(st => st.parent_id === task.id)
+        .sort((a, b) => a.order_index - b.order_index);
       return { ...task, subtasks };
+    });
+
+    // Sort by due date and priority
+    tasksWithSubtasks.sort((a, b) => {
+      if (a.due_date && b.due_date) {
+        return new Date(a.due_date) - new Date(b.due_date);
+      }
+      if (a.due_date) return -1;
+      if (b.due_date) return 1;
+      return 0;
     });
 
     res.json(tasksWithSubtasks);
@@ -97,11 +69,13 @@ app.get('/api/tasks', (req, res) => {
 // Get single task
 app.get('/api/tasks/:id', (req, res) => {
   try {
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+    const task = db.tasks.find(t => t.id === req.params.id);
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
     }
-    const subtasks = db.prepare('SELECT * FROM subtasks WHERE parent_id = ? ORDER BY order_index').all(task.id);
+    const subtasks = db.subtasks
+      .filter(st => st.parent_id === task.id)
+      .sort((a, b) => a.order_index - b.order_index);
     res.json({ ...task, subtasks });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -114,29 +88,42 @@ app.post('/api/tasks', (req, res) => {
     const { title, description, type, priority, due_date, estimated_hours, energy_level } = req.body;
     const id = uuidv4();
     
-    const stmt = db.prepare(`
-      INSERT INTO tasks (id, title, description, type, priority, due_date, estimated_hours, energy_level)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const task = {
+      id,
+      title,
+      description: description || '',
+      type,
+      priority: priority || 'medium',
+      status: 'pending',
+      due_date: due_date || null,
+      estimated_hours: estimated_hours || null,
+      completed_hours: 0,
+      energy_level: energy_level || null,
+      created_at: new Date().toISOString(),
+      completed_at: null
+    };
     
-    stmt.run(id, title, description, type, priority || 'medium', due_date, estimated_hours, energy_level);
+    db.tasks.push(task);
     
     // Auto-break down large projects
+    const taskSubtasks = [];
     if (estimated_hours && estimated_hours > 4) {
-      const subtasks = breakDownProject(title, estimated_hours);
-      const subtaskStmt = db.prepare(`
-        INSERT INTO subtasks (id, parent_id, title, order_index)
-        VALUES (?, ?, ?, ?)
-      `);
+      const subtaskTitles = breakDownProject(title, estimated_hours);
       
-      subtasks.forEach((subtask, index) => {
-        subtaskStmt.run(uuidv4(), id, subtask, index);
+      subtaskTitles.forEach((subtaskTitle, index) => {
+        const subtask = {
+          id: uuidv4(),
+          parent_id: id,
+          title: subtaskTitle,
+          status: 'pending',
+          order_index: index
+        };
+        db.subtasks.push(subtask);
+        taskSubtasks.push(subtask);
       });
     }
     
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-    const taskSubtasks = db.prepare('SELECT * FROM subtasks WHERE parent_id = ? ORDER BY order_index').all(id);
-    
+    saveDB();
     res.status(201).json({ ...task, subtasks: taskSubtasks });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -148,20 +135,32 @@ app.put('/api/tasks/:id', (req, res) => {
   try {
     const { title, description, type, priority, status, due_date, estimated_hours, completed_hours, energy_level } = req.body;
     
-    const stmt = db.prepare(`
-      UPDATE tasks 
-      SET title = ?, description = ?, type = ?, priority = ?, status = ?, 
-          due_date = ?, estimated_hours = ?, completed_hours = ?, energy_level = ?,
-          completed_at = CASE WHEN ? = 'completed' THEN CURRENT_TIMESTAMP ELSE completed_at END
-      WHERE id = ?
-    `);
+    const taskIndex = db.tasks.findIndex(t => t.id === req.params.id);
+    if (taskIndex === -1) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
     
-    stmt.run(title, description, type, priority, status, due_date, estimated_hours, completed_hours, energy_level, status, req.params.id);
+    db.tasks[taskIndex] = {
+      ...db.tasks[taskIndex],
+      title,
+      description,
+      type,
+      priority,
+      status,
+      due_date,
+      estimated_hours,
+      completed_hours: completed_hours || 0,
+      energy_level,
+      completed_at: status === 'completed' ? new Date().toISOString() : db.tasks[taskIndex].completed_at
+    };
     
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
-    const subtasks = db.prepare('SELECT * FROM subtasks WHERE parent_id = ? ORDER BY order_index').all(req.params.id);
+    saveDB();
     
-    res.json({ ...task, subtasks });
+    const subtasks = db.subtasks
+      .filter(st => st.parent_id === req.params.id)
+      .sort((a, b) => a.order_index - b.order_index);
+    
+    res.json({ ...db.tasks[taskIndex], subtasks });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -170,8 +169,9 @@ app.put('/api/tasks/:id', (req, res) => {
 // Delete task
 app.delete('/api/tasks/:id', (req, res) => {
   try {
-    db.prepare('DELETE FROM subtasks WHERE parent_id = ?').run(req.params.id);
-    db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+    db.subtasks = db.subtasks.filter(st => st.parent_id !== req.params.id);
+    db.tasks = db.tasks.filter(t => t.id !== req.params.id);
+    saveDB();
     res.json({ message: 'Task deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -182,9 +182,16 @@ app.delete('/api/tasks/:id', (req, res) => {
 app.put('/api/subtasks/:id', (req, res) => {
   try {
     const { status } = req.body;
-    db.prepare('UPDATE subtasks SET status = ? WHERE id = ?').run(status, req.params.id);
-    const subtask = db.prepare('SELECT * FROM subtasks WHERE id = ?').get(req.params.id);
-    res.json(subtask);
+    const subtaskIndex = db.subtasks.findIndex(st => st.id === req.params.id);
+    
+    if (subtaskIndex === -1) {
+      return res.status(404).json({ error: 'Subtask not found' });
+    }
+    
+    db.subtasks[subtaskIndex].status = status;
+    saveDB();
+    
+    res.json(db.subtasks[subtaskIndex]);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -196,11 +203,16 @@ app.post('/api/energy-patterns', (req, res) => {
     const { day_of_week, hour, energy_level } = req.body;
     const id = uuidv4();
     
-    db.prepare(`
-      INSERT INTO energy_patterns (id, day_of_week, hour, energy_level)
-      VALUES (?, ?, ?, ?)
-    `).run(id, day_of_week, hour, energy_level);
+    db.energy_patterns.push({
+      id,
+      user_id: 'default',
+      day_of_week,
+      hour,
+      energy_level,
+      recorded_at: new Date().toISOString()
+    });
     
+    saveDB();
     res.status(201).json({ message: 'Energy pattern recorded' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -210,19 +222,31 @@ app.post('/api/energy-patterns', (req, res) => {
 // Get AI study recommendations
 app.get('/api/recommendations', (req, res) => {
   try {
-    const tasks = db.prepare(`
-      SELECT * FROM tasks 
-      WHERE status != 'completed' 
-      ORDER BY due_date ASC, priority DESC
-      LIMIT 10
-    `).all();
+    const tasks = db.tasks.filter(t => t.status !== 'completed')
+      .sort((a, b) => {
+        if (a.due_date && b.due_date) return new Date(a.due_date) - new Date(b.due_date);
+        if (a.due_date) return -1;
+        if (b.due_date) return 1;
+        return 0;
+      })
+      .slice(0, 10);
     
-    const energyPatterns = db.prepare(`
-      SELECT day_of_week, hour, energy_level, COUNT(*) as frequency
-      FROM energy_patterns
-      GROUP BY day_of_week, hour, energy_level
-      ORDER BY frequency DESC
-    `).all();
+    // Group energy patterns by day, hour, and level
+    const energyGroups = {};
+    db.energy_patterns.forEach(ep => {
+      const key = `${ep.day_of_week}-${ep.hour}-${ep.energy_level}`;
+      energyGroups[key] = (energyGroups[key] || 0) + 1;
+    });
+    
+    const energyPatterns = Object.entries(energyGroups).map(([key, frequency]) => {
+      const [day_of_week, hour, energy_level] = key.split('-');
+      return {
+        day_of_week: parseInt(day_of_week),
+        hour: parseInt(hour),
+        energy_level,
+        frequency
+      };
+    }).sort((a, b) => b.frequency - a.frequency);
     
     const recommendations = generateStudyRecommendations(tasks, energyPatterns);
     res.json(recommendations);
@@ -237,18 +261,28 @@ app.post('/api/study-sessions', (req, res) => {
     const { task_id, start_time, end_time, duration_minutes, energy_level, productivity_rating } = req.body;
     const id = uuidv4();
     
-    db.prepare(`
-      INSERT INTO study_sessions (id, task_id, start_time, end_time, duration_minutes, energy_level, productivity_rating)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, task_id, start_time, end_time, duration_minutes, energy_level, productivity_rating);
+    db.study_sessions.push({
+      id,
+      task_id: task_id || null,
+      start_time,
+      end_time,
+      duration_minutes,
+      energy_level,
+      productivity_rating
+    });
     
     // Update energy patterns based on this session
     const startDate = new Date(start_time);
-    db.prepare(`
-      INSERT INTO energy_patterns (id, day_of_week, hour, energy_level)
-      VALUES (?, ?, ?, ?)
-    `).run(uuidv4(), startDate.getDay(), startDate.getHours(), energy_level);
+    db.energy_patterns.push({
+      id: uuidv4(),
+      user_id: 'default',
+      day_of_week: startDate.getDay(),
+      hour: startDate.getHours(),
+      energy_level,
+      recorded_at: new Date().toISOString()
+    });
     
+    saveDB();
     res.status(201).json({ message: 'Study session recorded' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -258,13 +292,16 @@ app.post('/api/study-sessions', (req, res) => {
 // Get statistics
 app.get('/api/stats', (req, res) => {
   try {
+    const now = new Date();
     const stats = {
-      total: db.prepare('SELECT COUNT(*) as count FROM tasks').get().count,
-      pending: db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'pending'").get().count,
-      in_progress: db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'in_progress'").get().count,
-      completed: db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'completed'").get().count,
-      overdue: db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status != 'completed' AND date(due_date) < date('now')").get().count,
-      total_study_hours: db.prepare('SELECT SUM(duration_minutes) as total FROM study_sessions').get().total || 0
+      total: db.tasks.length,
+      pending: db.tasks.filter(t => t.status === 'pending').length,
+      in_progress: db.tasks.filter(t => t.status === 'in_progress').length,
+      completed: db.tasks.filter(t => t.status === 'completed').length,
+      overdue: db.tasks.filter(t => {
+        return t.status !== 'completed' && t.due_date && new Date(t.due_date) < now;
+      }).length,
+      total_study_hours: db.study_sessions.reduce((sum, session) => sum + (session.duration_minutes || 0), 0)
     };
     
     res.json(stats);
