@@ -4,6 +4,9 @@ const API_URL = 'http://localhost:3000/api';
 let currentView = 'tasks';
 let tasks = [];
 let recommendations = [];
+let recurringEvents = [];
+let currentSchedule = null;
+let sleepSchedule = null;
 let selectedEnergyLevel = null;
 
 // Initialize app
@@ -13,6 +16,15 @@ document.addEventListener('DOMContentLoaded', () => {
   loadTasks();
   loadStats();
   loadRecommendations();
+  loadRecurringEvents();
+  loadSleepSchedule();
+  
+  // Set today's date as default
+  const today = new Date().toISOString().split('T')[0];
+  const scheduleDate = document.getElementById('schedule-date');
+  if (scheduleDate) {
+    scheduleDate.value = today;
+  }
 });
 
 // Event Listeners
@@ -45,16 +57,6 @@ function initEventListeners() {
     });
   });
 
-  const closeModal = document.getElementById('close-modal');
-  if (closeModal) {
-    closeModal.addEventListener('click', closeTaskModal);
-  }
-
-  const cancelTaskBtn = document.getElementById('cancel-task-btn');
-  if (cancelTaskBtn) {
-    cancelTaskBtn.addEventListener('click', closeTaskModal);
-  }
-
   const taskForm = document.getElementById('task-form');
   if (taskForm) {
     taskForm.addEventListener('submit', handleTaskSubmit);
@@ -64,25 +66,10 @@ function initEventListeners() {
   if (logEnergyBtn) {
     logEnergyBtn.addEventListener('click', openEnergyModal);
   }
-
-  const closeEnergyModal = document.getElementById('close-energy-modal');
-  if (closeEnergyModal) {
-    closeEnergyModal.addEventListener('click', closeEnergyModal);
-  }
   
   const studySessionBtn = document.getElementById('study-session-btn');
   if (studySessionBtn) {
     studySessionBtn.addEventListener('click', openStudySessionModal);
-  }
-
-  const closeSessionModal = document.getElementById('close-session-modal');
-  if (closeSessionModal) {
-    closeSessionModal.addEventListener('click', closeStudySessionModal);
-  }
-
-  const cancelSessionBtn = document.getElementById('cancel-session-btn');
-  if (cancelSessionBtn) {
-    cancelSessionBtn.addEventListener('click', closeStudySessionModal);
   }
 
   const sessionForm = document.getElementById('session-form');
@@ -131,6 +118,106 @@ function initEventListeners() {
     });
   });
 
+  // Universal close button handler for all modals
+  document.querySelectorAll('.close-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const modal = e.target.closest('.modal');
+      if (modal) {
+        modal.classList.remove('active');
+      }
+    });
+  });
+
+  // Universal cancel button handler for all modals  
+  document.querySelectorAll('.btn-secondary').forEach(btn => {
+    if (btn.textContent.trim() === 'Cancel') {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const modal = e.target.closest('.modal');
+        if (modal) {
+          modal.classList.remove('active');
+        }
+      });
+    }
+  });
+
+  // NEW: Recurring Events
+  const addRecurringBtn = document.getElementById('add-recurring-btn');
+  if (addRecurringBtn) {
+    addRecurringBtn.addEventListener('click', openRecurringModal);
+  }
+
+  const addRecurringEventBtn = document.getElementById('add-recurring-event-btn');
+  if (addRecurringEventBtn) {
+    addRecurringEventBtn.addEventListener('click', openRecurringModal);
+  }
+
+  const recurringForm = document.getElementById('recurring-form');
+  if (recurringForm) {
+    recurringForm.addEventListener('submit', handleRecurringSubmit);
+  }
+
+  const recurringPattern = document.getElementById('recurring-pattern');
+  if (recurringPattern) {
+    recurringPattern.addEventListener('change', toggleWeeklyDays);
+  }
+
+  // NEW: Sleep Schedule
+  const sleepScheduleBtn = document.getElementById('sleep-schedule-btn');
+  if (sleepScheduleBtn) {
+    sleepScheduleBtn.addEventListener('click', openSleepModal);
+  }
+
+  const sleepForm = document.getElementById('sleep-form');
+  if (sleepForm) {
+    sleepForm.addEventListener('submit', handleSleepSubmit);
+  }
+
+  const sleepHoursSlider = document.getElementById('sleep-desired-hours');
+  const sleepHoursValue = document.getElementById('sleep-hours-value');
+  if (sleepHoursSlider && sleepHoursValue) {
+    sleepHoursSlider.addEventListener('input', (e) => {
+      sleepHoursValue.textContent = e.target.value;
+    });
+  }
+
+  // NEW: Calendar Import
+  const googleCalendarBtn = document.getElementById('google-calendar-btn');
+  if (googleCalendarBtn) {
+    googleCalendarBtn.addEventListener('click', openGoogleModal);
+  }
+
+  const importIcsBtn = document.getElementById('import-ics-btn');
+  if (importIcsBtn) {
+    importIcsBtn.addEventListener('click', importFromICS);
+  }
+
+  // NEW: Smart Schedule
+  const generateScheduleBtn = document.getElementById('generate-schedule-btn');
+  if (generateScheduleBtn) {
+    generateScheduleBtn.addEventListener('click', generateSchedule);
+  }
+
+  const manualScheduleBtn = document.getElementById('manual-schedule-btn');
+  if (manualScheduleBtn) {
+    manualScheduleBtn.addEventListener('click', openManualScheduleModal);
+  }
+
+  const scheduleDate = document.getElementById('schedule-date');
+  if (scheduleDate) {
+    scheduleDate.addEventListener('change', (e) => {
+      if (currentView === 'schedule') {
+        generateSchedule();
+      }
+    });
+  }
+
+  // NEW: Manual Schedule Modal
+  const manualScheduleForm = document.getElementById('manual-schedule-form');
+  if (manualScheduleForm) {
+    manualScheduleForm.addEventListener('submit', handleManualScheduleSubmit);
+  }
+
   console.log('✅ Event listeners initialized');
 }
 
@@ -157,6 +244,10 @@ function switchView(view) {
   // Load content based on view
   if (view === 'recommendations') {
     loadRecommendations();
+  } else if (view === 'schedule') {
+    renderSchedule();
+  } else if (view === 'recurring') {
+    renderRecurringEvents();
   } else if (view !== 'tasks') {
     filterTasksByType(view);
   }
@@ -774,4 +865,462 @@ function showSuccess(message) {
 function showError(message) {
   console.error('❌', message);
   alert('Error: ' + message); // TODO: Replace with toast notification
+}
+
+// ============================================
+// NEW FEATURES FUNCTIONS
+// ============================================
+
+// Recurring Events
+async function loadRecurringEvents() {
+  try {
+    const response = await fetch(`${API_URL}/recurring-events`);
+    recurringEvents = await response.json();
+    if (currentView === 'recurring') {
+      renderRecurringEvents();
+    }
+  } catch (error) {
+    console.error('Error loading recurring events:', error);
+  }
+}
+
+function openRecurringModal(event = null) {
+  const modal = document.getElementById('recurring-modal');
+  const form = document.getElementById('recurring-form');
+  const modalTitle = document.getElementById('recurring-modal-title');
+  
+  form.reset();
+  
+  if (event) {
+    modalTitle.textContent = 'Edit Recurring Event';
+    document.getElementById('recurring-id').value = event.id;
+    document.getElementById('recurring-title').value = event.title;
+    document.getElementById('recurring-description').value = event.description || '';
+    document.getElementById('recurring-type').value = event.type;
+    document.getElementById('recurring-pattern').value = event.recurrence_pattern;
+    document.getElementById('recurring-start-time').value = event.start_time;
+    document.getElementById('recurring-end-time').value = event.end_time;
+    
+    if (event.days_of_week) {
+      event.days_of_week.forEach(day => {
+        const checkbox = document.querySelector(`#weekly-days-group input[value="${day}"]`);
+        if (checkbox) checkbox.checked = true;
+      });
+    }
+    
+    if (event.start_date) {
+      document.getElementById('recurring-start-date').value = event.start_date.split('T')[0];
+    }
+    if (event.end_date) {
+      document.getElementById('recurring-end-date').value = event.end_date.split('T')[0];
+    }
+  } else {
+    modalTitle.textContent = 'Add Recurring Event';
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('recurring-start-date').value = today;
+  }
+  
+  toggleWeeklyDays();
+  modal.classList.add('active');
+}
+
+function toggleWeeklyDays() {
+  const pattern = document.getElementById('recurring-pattern').value;
+  const weeklyDaysGroup = document.getElementById('weekly-days-group');
+  
+  if (pattern === 'weekly') {
+    weeklyDaysGroup.style.display = 'block';
+  } else {
+    weeklyDaysGroup.style.display = 'none';
+  }
+}
+
+async function handleRecurringSubmit(e) {
+  e.preventDefault();
+  
+  const id = document.getElementById('recurring-id').value;
+  const pattern = document.getElementById('recurring-pattern').value;
+  
+  let daysOfWeek = [];
+  if (pattern === 'weekly') {
+    const checkedDays = document.querySelectorAll('#weekly-days-group input:checked');
+    daysOfWeek = Array.from(checkedDays).map(cb => parseInt(cb.value));
+    
+    if (daysOfWeek.length === 0) {
+      showError('Please select at least one day of the week');
+      return;
+    }
+  }
+  
+  const eventData = {
+    title: document.getElementById('recurring-title').value,
+    description: document.getElementById('recurring-description').value,
+    type: document.getElementById('recurring-type').value,
+    start_time: document.getElementById('recurring-start-time').value,
+    end_time: document.getElementById('recurring-end-time').value,
+    recurrence_pattern: pattern,
+    days_of_week: daysOfWeek,
+    start_date: document.getElementById('recurring-start-date').value || null,
+    end_date: document.getElementById('recurring-end-date').value || null
+  };
+  
+  try {
+    const url = id ? `${API_URL}/recurring-events/${id}` : `${API_URL}/recurring-events`;
+    const method = id ? 'PUT' : 'POST';
+    
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(eventData)
+    });
+    
+    const result = await response.json();
+    
+    if (id) {
+      recurringEvents = recurringEvents.map(e => e.id === id ? result : e);
+    } else {
+      recurringEvents.push(result);
+    }
+    
+    renderRecurringEvents();
+    closeModal('recurring-modal');
+    showSuccess(id ? 'Event updated!' : 'Recurring event created!');
+  } catch (error) {
+    showError('Failed to save recurring event');
+  }
+}
+
+async function deleteRecurringEvent(id) {
+  if (!confirm('Delete this recurring event?')) return;
+  
+  try {
+    await fetch(`${API_URL}/recurring-events/${id}`, { method: 'DELETE' });
+    recurringEvents = recurringEvents.filter(e => e.id !== id);
+    renderRecurringEvents();
+    showSuccess('Event deleted');
+  } catch (error) {
+    showError('Failed to delete event');
+  }
+}
+
+function renderRecurringEvents() {
+  const container = document.getElementById('recurring-container');
+  
+  if (recurringEvents.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">🔄</div>
+        <h3>No recurring events</h3>
+        <p>Add recurring events like classes, work shifts, or regular activities.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = recurringEvents.map(event => `
+    <div class="recurring-card">
+      <div class="recurring-header">
+        <span class="recurring-type ${event.type}">${event.type}</span>
+        <div class="task-actions">
+          <button class="icon-btn" onclick="openRecurringModal(${JSON.stringify(event).replace(/"/g, '&quot;')})">✏️</button>
+          <button class="icon-btn" onclick="deleteRecurringEvent('${event.id}')">🗑️</button>
+        </div>
+      </div>
+      <h3 class="recurring-title">${escapeHtml(event.title)}</h3>
+      ${event.description ? `<p class="task-description">${escapeHtml(event.description)}</p>` : ''}
+      <div class="recurring-details">
+        <span>🕐 ${event.start_time} - ${event.end_time}</span>
+        <span>🔄 ${event.recurrence_pattern}</span>
+      </div>
+      ${event.recurrence_pattern === 'weekly' && event.days_of_week.length > 0 ? `
+        <div class="recurring-pattern">
+          📅 ${event.days_of_week.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ')}
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+}
+
+// Sleep Schedule
+async function loadSleepSchedule() {
+  try {
+    const response = await fetch(`${API_URL}/sleep-schedule`);
+    sleepSchedule = await response.json();
+  } catch (error) {
+    console.error('Error loading sleep schedule:', error);
+  }
+}
+
+function openSleepModal() {
+  const modal = document.getElementById('sleep-modal');
+  const form = document.getElementById('sleep-form');
+  
+  if (sleepSchedule) {
+    document.getElementById('sleep-bedtime').value = sleepSchedule.bedtime;
+    document.getElementById('sleep-waketime').value = sleepSchedule.wake_time;
+    document.getElementById('sleep-desired-hours').value = sleepSchedule.desired_hours;
+    document.getElementById('sleep-hours-value').textContent = sleepSchedule.desired_hours;
+    document.getElementById('sleep-optimize').checked = sleepSchedule.optimize || false;
+    document.getElementById('sleep-flexible').checked = sleepSchedule.flexible || false;
+  }
+  
+  modal.classList.add('active');
+}
+
+async function handleSleepSubmit(e) {
+  e.preventDefault();
+  
+  const scheduleData = {
+    bedtime: document.getElementById('sleep-bedtime').value,
+    wake_time: document.getElementById('sleep-waketime').value,
+    desired_hours: parseFloat(document.getElementById('sleep-desired-hours').value),
+    optimize: document.getElementById('sleep-optimize').checked,
+    flexible: document.getElementById('sleep-flexible').checked
+  };
+  
+  try {
+    const response = await fetch(`${API_URL}/sleep-schedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(scheduleData)
+    });
+    
+    sleepSchedule = await response.json();
+    closeModal('sleep-modal');
+    showSuccess('Sleep schedule saved! AI will now avoid scheduling during sleep hours.');
+  } catch (error) {
+    showError('Failed to save sleep schedule');
+  }
+}
+
+// Calendar Import (ICS File)
+function openGoogleModal() {
+  document.getElementById('google-modal').classList.add('active');
+}
+
+async function importFromICS() {
+  const fileInput = document.getElementById('ics-file-input');
+  const file = fileInput.files[0];
+  
+  if (!file) {
+    showError('Please select an ICS file to import');
+    return;
+  }
+  
+  try {
+    const icsContent = await file.text();
+    
+    const response = await fetch(`${API_URL}/calendar/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ icsContent })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    showSuccess(`Imported ${result.imported} events as recurring events!`);
+    
+    await loadRecurringEvents();
+    closeModal('google-modal');
+    fileInput.value = ''; // Clear file input
+  } catch (error) {
+    console.error('Error importing ICS:', error);
+    showError('Failed to import calendar file. Make sure it\'s a valid ICS file.');
+  }
+}
+
+// Smart Scheduling
+async function generateSchedule() {
+  const dateInput = document.getElementById('schedule-date');
+  const date = dateInput ? dateInput.value : new Date().toISOString().split('T')[0];
+  
+  try {
+    const response = await fetch(`${API_URL}/schedule/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    currentSchedule = await response.json();
+    renderSchedule();
+    showSuccess('Schedule generated successfully!');
+  } catch (error) {
+    console.error('Error generating schedule:', error);
+    showError('Failed to generate schedule');
+  }
+}
+
+function renderSchedule() {
+  const container = document.getElementById('schedule-container');
+  
+  if (!currentSchedule) {
+    container.innerHTML = '<div class="loading">Generating schedule...</div>';
+    return;
+  }
+  
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  
+  container.innerHTML = `
+    <div class="schedule-day-card">
+      <div class="schedule-header">
+        <div>
+          <div class="schedule-date">${days[currentSchedule.day_of_week]}, ${currentSchedule.date}</div>
+          ${currentSchedule.sleep_schedule ? `
+            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.5rem;">
+              😴 Sleep: ${formatTime12Hour(currentSchedule.sleep_schedule.bedtime)} - ${formatTime12Hour(currentSchedule.sleep_schedule.wake_time)}
+            </div>
+          ` : ''}
+        </div>
+        <div class="schedule-stats">
+          <span>📋 ${currentSchedule.total_tasks} tasks</span>
+          <span>⏱️ ${currentSchedule.total_hours}h scheduled</span>
+        </div>
+      </div>
+      
+      <div class="schedule-timeline">
+        ${renderScheduleSlots()}
+      </div>
+    </div>
+  `;
+}
+
+function renderScheduleSlots() {
+  const allSlots = [];
+  
+  // Add sleep time
+  if (currentSchedule.sleep_schedule) {
+    const bedtime = parseInt(currentSchedule.sleep_schedule.bedtime.split(':')[0]);
+    const waketime = parseInt(currentSchedule.sleep_schedule.wake_time.split(':')[0]);
+    
+    if (bedtime > waketime) {
+      allSlots.push({
+        time: formatTimeRange(currentSchedule.sleep_schedule.bedtime, '23:59'),
+        title: '😴 Sleep',
+        type: 'sleep-time'
+      });
+      allSlots.push({
+        time: formatTimeRange('00:00', currentSchedule.sleep_schedule.wake_time),
+        title: '😴 Sleep',
+        type: 'sleep-time'
+      });
+    } else {
+      allSlots.push({
+        time: formatTimeRange(currentSchedule.sleep_schedule.bedtime, currentSchedule.sleep_schedule.wake_time),
+        title: '😴 Sleep',
+        type: 'sleep-time'
+      });
+    }
+  }
+  
+  // Add recurring events
+  currentSchedule.recurring_events.forEach(event => {
+    allSlots.push({
+      time: formatTimeRange(event.start_time, event.end_time),
+      title: event.name || event.title || 'Recurring Event',
+      meta: event.pattern || 'Event',
+      type: 'recurring-event'
+    });
+  });
+  
+  // Add scheduled tasks
+  currentSchedule.scheduled_tasks.forEach(st => {
+    allSlots.push({
+      time: formatTimeRange(st.start_time, st.end_time),
+      title: st.task.title,
+      meta: st.reason,
+      energy: st.energy_level,
+      type: 'task-scheduled'
+    });
+  });
+  
+  // Sort by time
+  allSlots.sort((a, b) => {
+    const timeA = a.time.split(' - ')[0];
+    const timeB = b.time.split(' - ')[0];
+    return timeA.localeCompare(timeB);
+  });
+  
+  return allSlots.map(slot => `
+    <div class="schedule-slot ${slot.type}">
+      <div class="schedule-time">${slot.time}</div>
+      <div class="schedule-content">
+        <div class="schedule-title">${escapeHtml(slot.title)}</div>
+        ${slot.meta ? `<div class="schedule-meta">${slot.meta}</div>` : ''}
+      </div>
+      ${slot.energy ? `<span class="schedule-energy ${slot.energy}">${slot.energy}</span>` : ''}
+    </div>
+  `).join('');
+}
+
+// Manual Scheduling
+function openManualScheduleModal() {
+  const modal = document.getElementById('manual-schedule-modal');
+  const taskSelect = document.getElementById('manual-task-select');
+  const dateInput = document.getElementById('manual-schedule-date');
+  
+  // Populate tasks
+  taskSelect.innerHTML = '<option value="">Choose a task...</option>' +
+    tasks.filter(t => t.status !== 'completed').map(t => 
+      `<option value="${t.id}">${escapeHtml(t.title)}</option>`
+    ).join('');
+  
+  // Set today's date
+  const today = new Date().toISOString().split('T')[0];
+  dateInput.value = today;
+  
+  modal.classList.add('active');
+}
+
+async function handleManualScheduleSubmit(e) {
+  e.preventDefault();
+  
+  const scheduleData = {
+    task_id: document.getElementById('manual-task-select').value,
+    scheduled_date: document.getElementById('manual-schedule-date').value,
+    start_time: document.getElementById('manual-start-time').value,
+    end_time: document.getElementById('manual-end-time').value,
+    is_manual: true
+  };
+  
+  try {
+    await fetch(`${API_URL}/schedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(scheduleData)
+    });
+    
+    closeModal('manual-schedule-modal');
+    showSuccess('Task scheduled!');
+    
+    if (currentView === 'schedule') {
+      generateSchedule();
+    }
+  } catch (error) {
+    showError('Failed to schedule task');
+  }
+}
+
+// Helper function to close any modal
+function closeModal(modalId) {
+  document.getElementById(modalId).classList.remove('active');
+}
+
+// Helper function to convert 24-hour time to 12-hour format
+function formatTime12Hour(time24) {
+  const [hours, minutes] = time24.split(':').map(Number);
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours % 12 || 12;
+  return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+}
+
+// Helper function to format time range
+function formatTimeRange(start, end) {
+  return `${formatTime12Hour(start)} - ${formatTime12Hour(end)}`;
 }

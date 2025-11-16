@@ -14,7 +14,11 @@ let db = {
   tasks: [],
   subtasks: [],
   energy_patterns: [],
-  study_sessions: []
+  study_sessions: [],
+  recurring_events: [],
+  sleep_schedule: null,
+  scheduled_tasks: [],
+  google_tokens: null
 };
 
 // Load database from file
@@ -433,6 +437,468 @@ function findNextHighEnergySlot(highEnergyTimes, currentDay, currentHour) {
   }
   
   return null;
+}
+
+// ============================================
+// RECURRING EVENTS API
+// ============================================
+
+// Get all recurring events
+app.get('/api/recurring-events', (req, res) => {
+  try {
+    res.json(db.recurring_events || []);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create recurring event
+app.post('/api/recurring-events', (req, res) => {
+  try {
+    const { title, description, type, start_time, end_time, recurrence_pattern, days_of_week, start_date, end_date } = req.body;
+    
+    const event = {
+      id: uuidv4(),
+      title,
+      description: description || '',
+      type, // 'school', 'work', 'activity', 'custom'
+      start_time, // e.g., "09:00"
+      end_time, // e.g., "10:30"
+      recurrence_pattern, // 'daily', 'weekly', 'monthly'
+      days_of_week: days_of_week || [], // [0,1,2,3,4] for weekdays
+      start_date: start_date || new Date().toISOString(),
+      end_date: end_date || null,
+      created_at: new Date().toISOString()
+    };
+    
+    if (!db.recurring_events) db.recurring_events = [];
+    db.recurring_events.push(event);
+    saveDB();
+    
+    res.status(201).json(event);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update recurring event
+app.put('/api/recurring-events/:id', (req, res) => {
+  try {
+    const index = db.recurring_events.findIndex(e => e.id === req.params.id);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    
+    db.recurring_events[index] = {
+      ...db.recurring_events[index],
+      ...req.body
+    };
+    
+    saveDB();
+    res.json(db.recurring_events[index]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete recurring event
+app.delete('/api/recurring-events/:id', (req, res) => {
+  try {
+    db.recurring_events = db.recurring_events.filter(e => e.id !== req.params.id);
+    saveDB();
+    res.json({ message: 'Event deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// SLEEP SCHEDULE API
+// ============================================
+
+// Get sleep schedule
+app.get('/api/sleep-schedule', (req, res) => {
+  try {
+    res.json(db.sleep_schedule || null);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Set/Update sleep schedule
+app.post('/api/sleep-schedule', (req, res) => {
+  try {
+    const { bedtime, wake_time, desired_hours, optimize, flexible } = req.body;
+    
+    db.sleep_schedule = {
+      bedtime, // e.g., "23:00"
+      wake_time, // e.g., "07:00"
+      desired_hours: desired_hours || 8,
+      optimize: optimize || false, // AI optimizes sleep schedule
+      flexible: flexible || false, // Allow flexible sleep times
+      updated_at: new Date().toISOString()
+    };
+    
+    saveDB();
+    res.json(db.sleep_schedule);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// SMART SCHEDULING API
+// ============================================
+
+// Get AI-generated schedule
+app.post('/api/schedule/generate', (req, res) => {
+  try {
+    const { date } = req.body; // Optional specific date, defaults to today
+    const targetDate = date ? new Date(date) : new Date();
+    
+    const schedule = generateSmartSchedule(targetDate);
+    res.json(schedule);
+  } catch (error) {
+    console.error('Schedule generation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get scheduled tasks for a date range
+app.get('/api/schedule', (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+    
+    let scheduled = db.scheduled_tasks || [];
+    
+    if (start_date && end_date) {
+      const start = new Date(start_date);
+      const end = new Date(end_date);
+      scheduled = scheduled.filter(s => {
+        const schedDate = new Date(s.scheduled_date);
+        return schedDate >= start && schedDate <= end;
+      });
+    }
+    
+    res.json(scheduled);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Manually schedule a task
+app.post('/api/schedule', (req, res) => {
+  try {
+    const { task_id, scheduled_date, start_time, end_time, is_manual } = req.body;
+    
+    const scheduledTask = {
+      id: uuidv4(),
+      task_id,
+      scheduled_date,
+      start_time,
+      end_time,
+      is_manual: is_manual || false,
+      created_at: new Date().toISOString()
+    };
+    
+    if (!db.scheduled_tasks) db.scheduled_tasks = [];
+    
+    // Remove any existing schedule for this task on this date
+    db.scheduled_tasks = db.scheduled_tasks.filter(s => 
+      !(s.task_id === task_id && s.scheduled_date === scheduled_date)
+    );
+    
+    db.scheduled_tasks.push(scheduledTask);
+    saveDB();
+    
+    res.status(201).json(scheduledTask);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update scheduled task
+app.put('/api/schedule/:id', (req, res) => {
+  try {
+    const index = db.scheduled_tasks.findIndex(s => s.id === req.params.id);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Scheduled task not found' });
+    }
+    
+    db.scheduled_tasks[index] = {
+      ...db.scheduled_tasks[index],
+      ...req.body,
+      is_manual: true // Mark as manually modified
+    };
+    
+    saveDB();
+    res.json(db.scheduled_tasks[index]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete scheduled task
+app.delete('/api/schedule/:id', (req, res) => {
+  try {
+    db.scheduled_tasks = db.scheduled_tasks.filter(s => s.id !== req.params.id);
+    saveDB();
+    res.json({ message: 'Schedule deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// CALENDAR IMPORT (Simple ICS/iCal)
+// ============================================
+// Note: Users can export their calendar as ICS file and import it here
+
+// Import calendar from ICS file content
+app.post('/api/calendar/import', (req, res) => {
+  try {
+    const { icsContent } = req.body;
+    
+    if (!icsContent) {
+      return res.status(400).json({ error: 'ICS content is required' });
+    }
+    
+    // Parse ICS content (basic parsing)
+    const events = parseICS(icsContent);
+    const imported = [];
+    
+    for (const event of events) {
+      const recurringEvent = {
+        id: uuidv4(),
+        name: event.summary,
+        start_time: event.startTime,
+        duration: event.duration,
+        pattern: event.recurring ? 'weekly' : 'daily',
+        days: event.days || [],
+        created_at: new Date().toISOString()
+      };
+      
+      db.recurring_events.push(recurringEvent);
+      imported.push(recurringEvent);
+    }
+    
+    saveDB();
+    res.json({ imported: imported.length, events: imported });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Simple ICS parser helper
+function parseICS(icsContent) {
+  const events = [];
+  const lines = icsContent.split('\n');
+  let currentEvent = null;
+  
+  for (let line of lines) {
+    line = line.trim();
+    
+    if (line === 'BEGIN:VEVENT') {
+      currentEvent = {};
+    } else if (line === 'END:VEVENT' && currentEvent) {
+      if (currentEvent.summary) {
+        events.push(currentEvent);
+      }
+      currentEvent = null;
+    } else if (currentEvent) {
+      if (line.startsWith('SUMMARY:')) {
+        currentEvent.summary = line.substring(8);
+      } else if (line.startsWith('DTSTART')) {
+        const timeMatch = line.match(/T(\d{2})(\d{2})/);
+        if (timeMatch) {
+          currentEvent.startTime = `${timeMatch[1]}:${timeMatch[2]}`;
+        }
+      } else if (line.startsWith('DTEND')) {
+        const timeMatch = line.match(/T(\d{2})(\d{2})/);
+        if (timeMatch && currentEvent.startTime) {
+          const startHour = parseInt(currentEvent.startTime.split(':')[0]);
+          const endHour = parseInt(timeMatch[1]);
+          currentEvent.duration = endHour - startHour;
+        }
+      } else if (line.startsWith('RRULE')) {
+        currentEvent.recurring = true;
+        if (line.includes('BYDAY=')) {
+          const dayMatch = line.match(/BYDAY=([^;]+)/);
+          if (dayMatch) {
+            const dayMap = { MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0 };
+            currentEvent.days = dayMatch[1].split(',').map(d => dayMap[d.trim()] || 0);
+          }
+        }
+      }
+    }
+  }
+  
+  return events;
+}
+
+// ============================================
+// ENHANCED AI SCHEDULING ALGORITHM
+// ============================================
+
+function generateSmartSchedule(targetDate) {
+  const dayOfWeek = targetDate.getDay();
+  const dateStr = targetDate.toISOString().split('T')[0];
+  
+  // Check if this is today and get current hour
+  const now = new Date();
+  const isToday = dateStr === now.toISOString().split('T')[0];
+  const currentHour = now.getHours();
+  
+  // Get sleep schedule constraints
+  const sleepSchedule = db.sleep_schedule || { bedtime: '23:00', wake_time: '07:00' };
+  const sleepStart = parseTime(sleepSchedule.bedtime);
+  const sleepEnd = parseTime(sleepSchedule.wake_time);
+  
+  // Get recurring events for this day
+  const recurringEvents = (db.recurring_events || []).filter(event => {
+    if (event.pattern === 'daily') return true;
+    if (event.pattern === 'weekly' && event.days && event.days.includes(dayOfWeek)) return true;
+    return false;
+  }).map(event => {
+    // Calculate end_time if not present
+    if (!event.end_time && event.start_time && event.duration) {
+      const startHour = parseTime(event.start_time);
+      const endHour = startHour + (event.duration || 1);
+      return { ...event, end_time: `${endHour.toString().padStart(2, '0')}:00` };
+    }
+    return event;
+  });
+  
+  // Get tasks that need scheduling
+  const pendingTasks = db.tasks.filter(t => 
+    t.status !== 'completed' && 
+    (!t.due_date || new Date(t.due_date) >= targetDate)
+  );
+  
+  // Get energy patterns for this day
+  const energyForDay = (db.energy_patterns || [])
+    .filter(ep => ep.day_of_week === dayOfWeek)
+    .reduce((acc, ep) => {
+      const key = ep.hour;
+      if (!acc[key]) acc[key] = { high: 0, medium: 0, low: 0 };
+      acc[key][ep.energy_level]++;
+      return acc;
+    }, {});
+  
+  // Calculate available time slots
+  const timeSlots = [];
+  for (let hour = sleepEnd; hour < sleepStart; hour++) {
+    // Skip past hours if scheduling for today
+    if (isToday && hour <= currentHour) {
+      continue;
+    }
+    
+    let blocked = false;
+    
+    // Check if hour is blocked by recurring events
+    for (const event of recurringEvents) {
+      const eventStart = parseTime(event.start_time);
+      const eventEnd = parseTime(event.end_time);
+      if (hour >= eventStart && hour < eventEnd) {
+        blocked = true;
+        break;
+      }
+    }
+    
+    if (!blocked) {
+      // Determine energy level for this hour
+      const energyData = energyForDay[hour];
+      let energyLevel = 'medium';
+      if (energyData) {
+        const max = Math.max(energyData.high, energyData.medium, energyData.low);
+        if (energyData.high === max) energyLevel = 'high';
+        else if (energyData.low === max) energyLevel = 'low';
+      }
+      
+      timeSlots.push({
+        hour,
+        time: `${hour.toString().padStart(2, '0')}:00`,
+        energy: energyLevel,
+        available: true
+      });
+    }
+  }
+  
+  // Smart task scheduling
+  const scheduledTasks = [];
+  const sortedTasks = [...pendingTasks].sort((a, b) => {
+    // Prioritize by: urgency > priority > energy match
+    const urgencyA = a.due_date ? (new Date(a.due_date) - targetDate) / (1000 * 60 * 60 * 24) : 999;
+    const urgencyB = b.due_date ? (new Date(b.due_date) - targetDate) / (1000 * 60 * 60 * 24) : 999;
+    
+    if (urgencyA < 3 && urgencyB >= 3) return -1;
+    if (urgencyB < 3 && urgencyA >= 3) return 1;
+    
+    const priorityMap = { high: 3, medium: 2, low: 1 };
+    return priorityMap[b.priority] - priorityMap[a.priority];
+  });
+  
+  let slotIndex = 0;
+  for (const task of sortedTasks) {
+    if (slotIndex >= timeSlots.length) break;
+    
+    const requiredSlots = Math.ceil((task.estimated_hours || 1) / 1);
+    
+    // Find best time slot based on energy level
+    let bestSlotIndex = slotIndex;
+    if (task.energy_level) {
+      for (let i = slotIndex; i < timeSlots.length - requiredSlots + 1; i++) {
+        if (timeSlots[i].energy === task.energy_level) {
+          bestSlotIndex = i;
+          break;
+        }
+      }
+    }
+    
+    if (bestSlotIndex + requiredSlots <= timeSlots.length) {
+      const startSlot = timeSlots[bestSlotIndex];
+      const endSlot = timeSlots[Math.min(bestSlotIndex + requiredSlots - 1, timeSlots.length - 1)];
+      
+      // Calculate urgency
+      const daysUntilDue = task.due_date ? (new Date(task.due_date) - targetDate) / (1000 * 60 * 60 * 24) : 999;
+      
+      scheduledTasks.push({
+        task_id: task.id,
+        task,
+        scheduled_date: dateStr,
+        start_time: startSlot.time,
+        end_time: `${(endSlot.hour + 1).toString().padStart(2, '0')}:00`,
+        energy_level: startSlot.energy,
+        reason: task.energy_level === startSlot.energy 
+          ? 'Optimal energy match' 
+          : daysUntilDue < 3 
+            ? 'Urgent deadline' 
+            : 'Best available slot'
+      });
+      
+      slotIndex = bestSlotIndex + requiredSlots;
+    }
+  }
+  
+  return {
+    date: dateStr,
+    day_of_week: dayOfWeek,
+    sleep_schedule: sleepSchedule,
+    recurring_events: recurringEvents,
+    available_slots: timeSlots,
+    scheduled_tasks: scheduledTasks,
+    total_tasks: scheduledTasks.length,
+    total_hours: scheduledTasks.reduce((sum, st) => {
+      const start = parseTime(st.start_time);
+      const end = parseTime(st.end_time);
+      return sum + (end - start);
+    }, 0)
+  };
+}
+
+function parseTime(timeStr) {
+  const [hours] = timeStr.split(':').map(Number);
+  return hours;
 }
 
 // Start server

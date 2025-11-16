@@ -13,10 +13,18 @@ A smart task manager specifically designed for students that integrates assignme
 
 ### 🤖 AI-Powered Features
 - **Energy Pattern Learning**: Log your energy levels throughout the day
+- **Smart Schedule Generation**: AI creates optimized daily schedules based on your tasks, energy patterns, sleep schedule, and recurring events
+- **Sleep Schedule Optimization**: Set your sleep schedule and choose to maximize sleep or maintain desired sleep duration
+- **Intelligent Task Prioritization**: AI considers task urgency, priority level, estimated hours, and your energy patterns
 - **Optimal Study Time Suggestions**: AI analyzes your energy patterns and suggests the best times to study
-- **Smart Scheduling**: Recommendations based on task urgency, priority, and your energy levels
 - **Project Decomposition**: Automatically breaks down large projects into 2-8 subtasks
 - **Workload Balance**: AI monitors your task distribution and suggests balanced scheduling
+
+### 📅 Advanced Scheduling
+- **Recurring Events**: Create daily or weekly repeating events for classes, work, or regular activities
+- **Manual Scheduling**: Override AI suggestions and manually schedule tasks at specific times
+- **Schedule Timeline View**: Visual timeline showing tasks, recurring events, and sleep periods with energy level indicators
+- **Google Calendar Integration**: Import events from Google Calendar (requires API setup)
 
 ### 📊 Analytics & Insights
 - **Real-time Statistics**: View total, pending, in-progress, completed, and overdue tasks
@@ -35,6 +43,7 @@ A smart task manager specifically designed for students that integrates assignme
 ### Prerequisites
 - **Node.js** (v14 or higher)
 - **npm** (comes with Node.js)
+- **Optional**: Google Cloud Console account (for Google Calendar integration)
 
 ### Installation
 
@@ -49,12 +58,26 @@ A smart task manager specifically designed for students that integrates assignme
    npm install
    ```
 
-3. **Start the server**:
+3. **(Optional) Set up Google Calendar Integration**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing one
+   - Enable the Google Calendar API
+   - Create OAuth 2.0 credentials:
+     - Application type: Web application
+     - Authorized redirect URIs: `http://localhost:3000/api/google/callback`
+   - Copy the Client ID and Client Secret
+   - Edit `server.js` and replace the placeholder values:
+     ```javascript
+     const GOOGLE_CLIENT_ID = 'your-client-id-here';
+     const GOOGLE_CLIENT_SECRET = 'your-client-secret-here';
+     ```
+
+4. **Start the server**:
    ```powershell
    npm start
    ```
 
-4. **Open your browser** and navigate to:
+5. **Open your browser** and navigate to:
    ```
    http://localhost:3000
    ```
@@ -70,7 +93,7 @@ npm run dev
 
 ### Creating Your First Task
 
-1. Click the **"+ New Task"** button in the sidebar
+1. Click the **"+ New Task"** button in the quick actions
 2. Fill in the task details:
    - **Title**: Name of your task
    - **Description**: Additional details (optional)
@@ -81,11 +104,64 @@ npm run dev
    - **Energy Level**: Preferred energy level for this task (helps AI scheduling)
 3. Click **"Save Task"**
 
+### Setting Up Recurring Events
+
+1. Click **"+ Recurring Event"** in quick actions
+2. Enter event details:
+   - **Name**: Event title (e.g., "Math Class", "Work Shift")
+   - **Start Time**: When the event begins (HH:MM format)
+   - **Duration**: How long it lasts in hours
+   - **Pattern**: Daily or Weekly
+   - **Days**: For weekly events, select which days (Mon-Sun)
+3. Click **"Add Event"**
+
+### Configuring Sleep Schedule
+
+1. Click **"💤 Sleep Schedule"** in quick actions
+2. Set your schedule:
+   - **Bedtime**: When you go to sleep (HH:MM format)
+   - **Wake Time**: When you wake up (HH:MM format)
+   - **Desired Hours**: Target sleep duration
+   - **Maximize Sleep**: Check to use all available time for sleep
+3. Click **"Save Schedule"**
+
+### Generating Smart Schedule
+
+1. Navigate to **"Smart Schedule"** view in the main navigation
+2. Click **"Generate Schedule"** button
+3. AI creates an optimized schedule considering:
+   - Your sleep schedule (blocks scheduling during sleep hours)
+   - Recurring events (classes, work, etc.)
+   - Task deadlines and priority
+   - Your energy patterns
+   - Available time slots
+4. View the timeline with color-coded blocks:
+   - 🌙 **Sleep periods** (blue)
+   - 📅 **Recurring events** (green)
+   - 📝 **Scheduled tasks** with energy badges (high/medium/low)
+
+### Manual Scheduling
+
+1. Click **"📝 Manual Schedule"** button
+2. Select a task from the dropdown
+3. Choose the date
+4. Select the time slot
+5. Click **"Schedule Task"** to override AI suggestion
+
+### Google Calendar Import
+
+1. Click **"📅 Google Calendar"** in quick actions
+2. Click **"Connect Google Calendar"**
+3. Authorize the app in the popup window
+4. Click **"Import Events"** to sync calendar events
+5. Events will be added as recurring events in TaskFlow
+6. To disconnect, click **"Disconnect"**
+
 ### Logging Energy Levels
 
 To help the AI learn your energy patterns:
 
-1. Click **"⚡ Log Energy"** in the sidebar
+1. Click **"⚡ Log Energy"** in quick actions
 2. Select your current energy level (Low, Medium, or High)
 3. The system records the time and day to build your energy profile
 
@@ -93,7 +169,7 @@ To help the AI learn your energy patterns:
 
 Track your study sessions to improve AI recommendations:
 
-1. Click **"🕐 Study Session"** in the sidebar
+1. Click **"🕐 Study Session"** in quick actions
 2. Select the task you worked on
 3. Enter the duration in minutes
 4. Rate your energy level during the session
@@ -102,7 +178,7 @@ Track your study sessions to improve AI recommendations:
 
 ### Viewing AI Recommendations
 
-1. Click **"🤖 AI Suggestions"** in the navigation menu
+1. Click **"🤖 Recommendations"** in the navigation menu
 2. View personalized recommendations including:
    - **Urgent Deadlines**: Tasks due within 3 days
    - **Optimal Study Times**: Best times to study based on your energy patterns
@@ -114,14 +190,15 @@ Track your study sessions to improve AI recommendations:
 - **Edit**: Click the ✏️ icon on any task card
 - **Delete**: Click the 🗑️ icon on any task card
 - **Complete Subtasks**: Check off subtasks as you complete them
-- **Filter**: Use the priority and status filters to find specific tasks
+- **Filter**: Use the navigation to view tasks by category
 
 ## 🛠️ Technology Stack
 
 ### Backend
 - **Node.js**: JavaScript runtime
 - **Express**: Web application framework
-- **better-sqlite3**: Fast, lightweight database
+- **googleapis**: Google Calendar API integration
+- **open**: OAuth flow helper
 - **UUID**: Unique ID generation
 
 ### Frontend
@@ -130,22 +207,26 @@ Track your study sessions to improve AI recommendations:
 - **Responsive Design**: Mobile-first approach
 
 ### Database
-- **SQLite**: Embedded database with:
-  - Tasks and subtasks tables
+- **JSON File Storage**: Lightweight, portable data storage with:
+  - Tasks and subtasks
+  - Recurring events
   - Energy patterns tracking
   - Study sessions history
+  - Sleep schedule
+  - Scheduled tasks
+  - Google Calendar tokens
 
 ## 📂 Project Structure
 
 ```
 Task-Flow/
 ├── public/
-│   ├── index.html      # Main HTML file
-│   ├── styles.css      # All styles and themes
-│   └── app.js          # Frontend JavaScript
-├── server.js           # Express server & API routes
+│   ├── index.html      # Main HTML file with all views and modals
+│   ├── styles.css      # All styles including new scheduling features
+│   └── app.js          # Frontend JavaScript with AI scheduling
+├── server.js           # Express server, API routes & AI algorithms
 ├── package.json        # Dependencies and scripts
-├── taskflow.db         # SQLite database (auto-created)
+├── taskflow-data.json  # JSON database (auto-created)
 └── README.md           # This file
 ```
 
@@ -153,23 +234,50 @@ Task-Flow/
 
 ### Tasks
 - `GET /api/tasks` - Get all tasks
-- `GET /api/tasks/:id` - Get single task
-- `POST /api/tasks` - Create new task
-- `PUT /api/tasks/:id` - Update task
+- `POST /api/tasks` - Create new task (auto-generates subtasks for >4hr tasks)
 - `DELETE /api/tasks/:id` - Delete task
+- `PATCH /api/tasks/:id/status` - Update task status
 
-### Subtasks
-- `PUT /api/subtasks/:id` - Update subtask status
+### Recurring Events
+- `GET /api/recurring-events` - Get all recurring events
+- `POST /api/recurring-events` - Create recurring event (daily/weekly)
+- `DELETE /api/recurring-events/:id` - Delete recurring event
 
-### Energy & Sessions
+### Scheduling
+- `POST /api/schedule/generate` - Generate AI-optimized schedule
+- `POST /api/schedule/manual` - Manually schedule a task
+- `GET /api/schedule` - Get current schedule
+- `DELETE /api/schedule/:id` - Remove scheduled task
+
+### Sleep Schedule
+- `GET /api/sleep-schedule` - Get sleep schedule configuration
+- `POST /api/sleep-schedule` - Update sleep schedule
+
+### Energy & Study Sessions
 - `POST /api/energy-patterns` - Log energy level
 - `POST /api/study-sessions` - Record study session
 
 ### Analytics
-- `GET /api/stats` - Get statistics
+- `GET /api/stats` - Get task statistics
 - `GET /api/recommendations` - Get AI recommendations
 
+### Google Calendar
+- `GET /api/google/auth` - Initiate OAuth flow
+- `GET /api/google/callback` - OAuth callback handler
+- `POST /api/google/import` - Import calendar events
+- `GET /api/google/status` - Check connection status
+- `POST /api/google/disconnect` - Disconnect Google account
+
 ## 🎯 AI Algorithm Details
+
+### Smart Schedule Generation
+The AI scheduler considers multiple factors:
+1. **Sleep Schedule**: Blocks out sleep hours, respects maximize sleep preference
+2. **Recurring Events**: Reserves time for classes, work, and regular activities
+3. **Energy Patterns**: Schedules high-priority tasks during your peak energy hours
+4. **Task Urgency**: Prioritizes tasks with approaching deadlines
+5. **Task Priority**: High priority tasks get scheduled first
+6. **Available Time**: Finds optimal time slots that fit task duration
 
 ### Energy Pattern Analysis
 The system tracks:
@@ -196,18 +304,26 @@ Tasks estimated at >4 hours are automatically divided into:
 
 (Up to 8 phases based on total estimated hours)
 
+### Sleep Optimization
+- **Maximize Sleep Mode**: Uses all time not occupied by tasks/events for sleep
+- **Desired Hours Mode**: Maintains specific sleep duration while scheduling tasks
+- Validates sleep schedule prevents task scheduling during sleep periods
+
 ## 🔮 Future Enhancements
 
-- [ ] Calendar integration (Google Calendar, Outlook)
+- [ ] Multi-calendar integration (Outlook, iCal)
 - [ ] Pomodoro timer built-in
 - [ ] Team collaboration features
 - [ ] Mobile app (iOS/Android)
-- [ ] Advanced analytics dashboard
-- [ ] Export data (PDF, CSV)
-- [ ] Notifications and reminders
+- [ ] Advanced analytics dashboard with charts
+- [ ] Export schedule (PDF, CSV, iCal)
+- [ ] Push notifications and reminders
 - [ ] Dark mode toggle
 - [ ] Multiple user support with authentication
 - [ ] Integration with learning management systems (Canvas, Blackboard)
+- [ ] Voice input for tasks
+- [ ] Habit tracking
+- [ ] Weather-based scheduling adjustments
 
 ## 🤝 Contributing
 
@@ -225,6 +341,36 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 Created with ❤️ for students who want to manage their time better and achieve more.
 
 ## 🆘 Support
+
+### Troubleshooting
+
+**Server won't start**
+- Make sure port 3000 is not in use
+- Check that all dependencies are installed: `npm install`
+- Verify Node.js version is 14 or higher: `node --version`
+
+**Google Calendar not working**
+- Ensure you've set up OAuth credentials correctly in Google Cloud Console
+- Check that redirect URI matches exactly: `http://localhost:3000/api/google/callback`
+- Verify Google Calendar API is enabled in Cloud Console
+- Check that Client ID and Secret are correctly set in `server.js`
+
+**Data not persisting**
+- Check file permissions on `taskflow-data.json`
+- Ensure the server has write access to the project directory
+- Verify the file is not locked by another process
+
+**Tasks not appearing in schedule**
+- Verify tasks have due dates set
+- Check that sleep schedule is configured
+- Ensure there are available time slots after sleep and recurring events
+- Try regenerating the schedule
+
+**Schedule shows empty**
+- Click "Generate Schedule" button in Smart Schedule view
+- Ensure you have tasks with future due dates
+- Check that your sleep schedule leaves available time
+- Verify recurring events aren't blocking all available time
 
 If you encounter any issues or have questions:
 1. Check the existing issues on GitHub

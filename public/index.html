@@ -54,6 +54,12 @@
           <button class="nav-btn active" data-view="tasks">
             <span class="icon">📝</span> All Tasks
           </button>
+          <button class="nav-btn" data-view="schedule">
+            <span class="icon">📅</span> Smart Schedule
+          </button>
+          <button class="nav-btn" data-view="recurring">
+            <span class="icon">🔄</span> Recurring Events
+          </button>
           <button class="nav-btn" data-view="assignments">
             <span class="icon">📖</span> Assignments
           </button>
@@ -71,6 +77,9 @@
         <div class="quick-actions">
           <h3>Quick Actions</h3>
           <button class="btn btn-primary" id="add-task-btn">+ New Task</button>
+          <button class="btn btn-secondary" id="add-recurring-btn">🔄 Recurring Event</button>
+          <button class="btn btn-secondary" id="sleep-schedule-btn">😴 Sleep Schedule</button>
+          <button class="btn btn-secondary" id="google-calendar-btn">📆 Google Calendar</button>
           <button class="btn btn-secondary" id="log-energy-btn">⚡ Log Energy</button>
           <button class="btn btn-secondary" id="study-session-btn">🕐 Study Session</button>
         </div>
@@ -159,6 +168,32 @@
           </div>
           <div id="recommendations-container" class="recommendations-grid">
             <!-- Recommendations will be loaded here -->
+          </div>
+        </div>
+
+        <!-- Smart Schedule View -->
+        <div id="schedule-view" class="view">
+          <div class="view-header">
+            <h2>Smart Schedule</h2>
+            <div class="schedule-controls">
+              <input type="date" id="schedule-date" class="filter-select">
+              <button class="btn btn-primary" id="generate-schedule-btn">🤖 Generate AI Schedule</button>
+              <button class="btn btn-secondary" id="manual-schedule-btn">✏️ Manual Edit</button>
+            </div>
+          </div>
+          <div id="schedule-container" class="schedule-grid">
+            <!-- Schedule will be loaded here -->
+          </div>
+        </div>
+
+        <!-- Recurring Events View -->
+        <div id="recurring-view" class="view">
+          <div class="view-header">
+            <h2>Recurring Events</h2>
+            <button class="btn btn-primary" id="add-recurring-event-btn">+ Add Recurring Event</button>
+          </div>
+          <div id="recurring-container" class="tasks-grid">
+            <!-- Recurring events will be loaded here -->
           </div>
         </div>
       </main>
@@ -319,6 +354,232 @@
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" id="cancel-session-btn">Cancel</button>
           <button type="submit" class="btn btn-primary">Save Session</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Recurring Event Modal -->
+  <div id="recurring-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="recurring-modal-title">Add Recurring Event</h2>
+        <button class="close-btn" id="close-recurring-modal">&times;</button>
+      </div>
+      <form id="recurring-form">
+        <input type="hidden" id="recurring-id">
+        
+        <div class="form-group">
+          <label for="recurring-title">Event Title *</label>
+          <input type="text" id="recurring-title" required placeholder="e.g., Math Class, Work Shift">
+        </div>
+
+        <div class="form-group">
+          <label for="recurring-description">Description</label>
+          <textarea id="recurring-description" rows="2"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="recurring-type">Type *</label>
+            <select id="recurring-type" required>
+              <option value="school">School/Class</option>
+              <option value="work">Work</option>
+              <option value="activity">Activity</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="recurring-pattern">Recurrence *</label>
+            <select id="recurring-pattern" required>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="recurring-start-time">Start Time *</label>
+            <input type="time" id="recurring-start-time" required>
+          </div>
+
+          <div class="form-group">
+            <label for="recurring-end-time">End Time *</label>
+            <input type="time" id="recurring-end-time" required>
+          </div>
+        </div>
+
+        <div class="form-group" id="weekly-days-group">
+          <label>Days of Week</label>
+          <div class="days-selector">
+            <label class="day-checkbox">
+              <input type="checkbox" value="0"> Sun
+            </label>
+            <label class="day-checkbox">
+              <input type="checkbox" value="1"> Mon
+            </label>
+            <label class="day-checkbox">
+              <input type="checkbox" value="2"> Tue
+            </label>
+            <label class="day-checkbox">
+              <input type="checkbox" value="3"> Wed
+            </label>
+            <label class="day-checkbox">
+              <input type="checkbox" value="4"> Thu
+            </label>
+            <label class="day-checkbox">
+              <input type="checkbox" value="5"> Fri
+            </label>
+            <label class="day-checkbox">
+              <input type="checkbox" value="6"> Sat
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="recurring-start-date">Start Date</label>
+            <input type="date" id="recurring-start-date">
+          </div>
+
+          <div class="form-group">
+            <label for="recurring-end-date">End Date (Optional)</label>
+            <input type="date" id="recurring-end-date">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-recurring-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Event</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sleep Schedule Modal -->
+  <div id="sleep-modal" class="modal">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Sleep Schedule</h2>
+        <button class="close-btn" id="close-sleep-modal">&times;</button>
+      </div>
+      <form id="sleep-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="sleep-bedtime">Bedtime 🌙</label>
+            <input type="time" id="sleep-bedtime" required value="23:00">
+          </div>
+
+          <div class="form-group">
+            <label for="sleep-waketime">Wake Time ☀️</label>
+            <input type="time" id="sleep-waketime" required value="07:00">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="sleep-desired-hours">Desired Sleep Hours</label>
+          <div class="sleep-slider">
+            <input type="range" id="sleep-desired-hours" min="5" max="10" step="0.5" value="8">
+            <span id="sleep-hours-value">8</span> hours
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="sleep-optimize">
+            <span>Let AI optimize my sleep schedule for better productivity</span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="sleep-flexible">
+            <span>Allow flexible sleep times (±30 minutes)</span>
+          </label>
+        </div>
+
+        <p class="help-text">AI will avoid scheduling tasks during your sleep hours and optimize your schedule based on your sleep patterns.</p>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-sleep-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Schedule</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Google Calendar Modal -->
+  <!-- Calendar Import Modal (Simple ICS) -->
+  <div id="google-modal" class="modal">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>📅 Import Calendar</h2>
+        <button class="close-btn" id="close-google-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="google-content">
+          <div class="google-icon">📁</div>
+          <h3>Import from Calendar File</h3>
+          <p>Upload an ICS/iCal file exported from Google Calendar, Outlook, or any calendar app.</p>
+          
+          <div class="form-group">
+            <label for="ics-file-input">Select .ics or .ical file:</label>
+            <input type="file" id="ics-file-input" accept=".ics,.ical" class="form-control">
+          </div>
+          
+          <button class="btn btn-primary" id="import-ics-btn">Import Events</button>
+          
+          <div class="help-text" style="margin-top: 20px;">
+            <strong>How to export from Google Calendar:</strong>
+            <ol>
+              <li>Open Google Calendar on your computer</li>
+              <li>Click Settings → Import & Export</li>
+              <li>Click "Export" to download your calendars</li>
+              <li>Unzip the file and select the .ics file you want to import</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual Schedule Modal -->
+  <div id="manual-schedule-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Manual Schedule</h2>
+        <button class="close-btn" id="close-manual-schedule-modal">&times;</button>
+      </div>
+      <form id="manual-schedule-form">
+        <div class="form-group">
+          <label for="manual-task-select">Select Task *</label>
+          <select id="manual-task-select" required>
+            <option value="">Choose a task...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="manual-schedule-date">Date *</label>
+          <input type="date" id="manual-schedule-date" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="manual-start-time">Start Time *</label>
+            <input type="time" id="manual-start-time" required>
+          </div>
+
+          <div class="form-group">
+            <label for="manual-end-time">End Time *</label>
+            <input type="time" id="manual-end-time" required>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-manual-schedule-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Schedule Task</button>
         </div>
       </form>
     </div>
