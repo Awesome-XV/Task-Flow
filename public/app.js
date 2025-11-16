@@ -8,6 +8,7 @@ let selectedEnergyLevel = null;
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('🚀 TaskFlow initialized');
   initEventListeners();
   loadTasks();
   loadStats();
@@ -16,6 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Event Listeners
 function initEventListeners() {
+  console.log('📋 Setting up event listeners...');
+  
   // Navigation
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -25,18 +28,67 @@ function initEventListeners() {
   });
 
   // Modals
-  document.getElementById('add-task-btn').addEventListener('click', () => openTaskModal());
-  document.getElementById('close-modal').addEventListener('click', closeTaskModal);
-  document.getElementById('cancel-task-btn').addEventListener('click', closeTaskModal);
-  document.getElementById('task-form').addEventListener('submit', handleTaskSubmit);
+  const addTaskBtn = document.getElementById('add-task-btn');
+  if (addTaskBtn) {
+    addTaskBtn.addEventListener('click', () => {
+      console.log('➕ Add Task button clicked');
+      openTaskModal();
+    });
+  }
 
-  document.getElementById('log-energy-btn').addEventListener('click', openEnergyModal);
-  document.getElementById('close-energy-modal').addEventListener('click', closeEnergyModal);
+  // Quick Create Buttons
+  document.querySelectorAll('.create-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const type = e.currentTarget.dataset.type;
+      console.log(`➕ Quick create ${type} clicked`);
+      openTaskModal(null, type);
+    });
+  });
+
+  const closeModal = document.getElementById('close-modal');
+  if (closeModal) {
+    closeModal.addEventListener('click', closeTaskModal);
+  }
+
+  const cancelTaskBtn = document.getElementById('cancel-task-btn');
+  if (cancelTaskBtn) {
+    cancelTaskBtn.addEventListener('click', closeTaskModal);
+  }
+
+  const taskForm = document.getElementById('task-form');
+  if (taskForm) {
+    taskForm.addEventListener('submit', handleTaskSubmit);
+  }
+
+  const logEnergyBtn = document.getElementById('log-energy-btn');
+  if (logEnergyBtn) {
+    logEnergyBtn.addEventListener('click', openEnergyModal);
+  }
+
+  const closeEnergyModal = document.getElementById('close-energy-modal');
+  if (closeEnergyModal) {
+    closeEnergyModal.addEventListener('click', closeEnergyModal);
+  }
   
-  document.getElementById('study-session-btn').addEventListener('click', openStudySessionModal);
-  document.getElementById('close-session-modal').addEventListener('click', closeStudySessionModal);
-  document.getElementById('cancel-session-btn').addEventListener('click', closeStudySessionModal);
-  document.getElementById('session-form').addEventListener('submit', handleSessionSubmit);
+  const studySessionBtn = document.getElementById('study-session-btn');
+  if (studySessionBtn) {
+    studySessionBtn.addEventListener('click', openStudySessionModal);
+  }
+
+  const closeSessionModal = document.getElementById('close-session-modal');
+  if (closeSessionModal) {
+    closeSessionModal.addEventListener('click', closeStudySessionModal);
+  }
+
+  const cancelSessionBtn = document.getElementById('cancel-session-btn');
+  if (cancelSessionBtn) {
+    cancelSessionBtn.addEventListener('click', closeStudySessionModal);
+  }
+
+  const sessionForm = document.getElementById('session-form');
+  if (sessionForm) {
+    sessionForm.addEventListener('submit', handleSessionSubmit);
+  }
 
   // Energy level buttons
   document.querySelectorAll('.energy-btn').forEach(btn => {
@@ -53,13 +105,22 @@ function initEventListeners() {
   // Productivity slider
   const productivitySlider = document.getElementById('session-productivity');
   const productivityValue = document.getElementById('productivity-value');
-  productivitySlider?.addEventListener('input', (e) => {
-    productivityValue.textContent = e.target.value;
-  });
+  if (productivitySlider && productivityValue) {
+    productivitySlider.addEventListener('input', (e) => {
+      productivityValue.textContent = e.target.value;
+    });
+  }
 
   // Filters
-  document.getElementById('filter-priority')?.addEventListener('change', filterTasks);
-  document.getElementById('filter-status')?.addEventListener('change', filterTasks);
+  const filterPriority = document.getElementById('filter-priority');
+  if (filterPriority) {
+    filterPriority.addEventListener('change', filterTasks);
+  }
+
+  const filterStatus = document.getElementById('filter-status');
+  if (filterStatus) {
+    filterStatus.addEventListener('change', filterTasks);
+  }
 
   // Close modals on outside click
   document.querySelectorAll('.modal').forEach(modal => {
@@ -69,11 +130,14 @@ function initEventListeners() {
       }
     });
   });
+
+  console.log('✅ Event listeners initialized');
 }
 
 // Navigation
 function switchView(view) {
   currentView = view;
+  console.log(`🔄 Switching to view: ${view}`);
   
   // Update nav buttons
   document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -84,7 +148,11 @@ function switchView(view) {
   document.querySelectorAll('.view').forEach(v => {
     v.classList.remove('active');
   });
-  document.getElementById(`${view}-view`).classList.add('active');
+  
+  const targetView = document.getElementById(`${view}-view`);
+  if (targetView) {
+    targetView.classList.add('active');
+  }
 
   // Load content based on view
   if (view === 'recommendations') {
@@ -96,20 +164,28 @@ function switchView(view) {
 
 // API Calls
 async function loadTasks() {
+  console.log('📥 Loading tasks...');
   try {
     const response = await fetch(`${API_URL}/tasks`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     tasks = await response.json();
+    console.log(`✅ Loaded ${tasks.length} tasks`);
     renderTasks(tasks);
     loadStats();
   } catch (error) {
-    console.error('Error loading tasks:', error);
-    showError('Failed to load tasks');
+    console.error('❌ Error loading tasks:', error);
+    showError('Failed to load tasks. Make sure the server is running on port 3000.');
   }
 }
 
 async function loadStats() {
   try {
     const response = await fetch(`${API_URL}/stats`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     const stats = await response.json();
     
     document.getElementById('stat-total').textContent = stats.total;
@@ -117,53 +193,74 @@ async function loadStats() {
     document.getElementById('stat-progress').textContent = stats.in_progress;
     document.getElementById('stat-completed').textContent = stats.completed;
     document.getElementById('stat-overdue').textContent = stats.overdue;
+    
+    console.log('📊 Stats updated:', stats);
   } catch (error) {
-    console.error('Error loading stats:', error);
+    console.error('❌ Error loading stats:', error);
   }
 }
 
 async function loadRecommendations() {
+  console.log('🤖 Loading AI recommendations...');
   try {
     const response = await fetch(`${API_URL}/recommendations`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     recommendations = await response.json();
+    console.log(`✅ Loaded ${recommendations.length} recommendations`);
     renderRecommendations(recommendations);
   } catch (error) {
-    console.error('Error loading recommendations:', error);
+    console.error('❌ Error loading recommendations:', error);
   }
 }
 
 async function createTask(taskData) {
+  console.log('➕ Creating task:', taskData);
   try {
     const response = await fetch(`${API_URL}/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(taskData)
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
     const newTask = await response.json();
+    console.log('✅ Task created:', newTask);
     tasks.push(newTask);
     renderTasks(tasks);
     loadStats();
     return newTask;
   } catch (error) {
-    console.error('Error creating task:', error);
+    console.error('❌ Error creating task:', error);
     throw error;
   }
 }
 
 async function updateTask(id, taskData) {
+  console.log('✏️ Updating task:', id);
   try {
     const response = await fetch(`${API_URL}/tasks/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(taskData)
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
     const updatedTask = await response.json();
+    console.log('✅ Task updated:', updatedTask);
     tasks = tasks.map(t => t.id === id ? updatedTask : t);
     renderTasks(tasks);
     loadStats();
     return updatedTask;
   } catch (error) {
-    console.error('Error updating task:', error);
+    console.error('❌ Error updating task:', error);
     throw error;
   }
 }
@@ -171,34 +268,49 @@ async function updateTask(id, taskData) {
 async function deleteTask(id) {
   if (!confirm('Are you sure you want to delete this task?')) return;
   
+  console.log('🗑️ Deleting task:', id);
   try {
-    await fetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
+    const response = await fetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    console.log('✅ Task deleted');
     tasks = tasks.filter(t => t.id !== id);
     renderTasks(tasks);
     loadStats();
   } catch (error) {
-    console.error('Error deleting task:', error);
+    console.error('❌ Error deleting task:', error);
     showError('Failed to delete task');
   }
 }
 
 async function updateSubtask(id, status) {
+  console.log('☑️ Updating subtask:', id, status);
   try {
-    await fetch(`${API_URL}/subtasks/${id}`, {
+    const response = await fetch(`${API_URL}/subtasks/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status })
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    console.log('✅ Subtask updated');
     loadTasks();
   } catch (error) {
-    console.error('Error updating subtask:', error);
+    console.error('❌ Error updating subtask:', error);
   }
 }
 
 async function logEnergyLevel(level) {
+  console.log('⚡ Logging energy level:', level);
   try {
     const now = new Date();
-    await fetch(`${API_URL}/energy-patterns`, {
+    const response = await fetch(`${API_URL}/energy-patterns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -207,21 +319,28 @@ async function logEnergyLevel(level) {
         energy_level: level
       })
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    console.log('✅ Energy level logged');
     closeEnergyModal();
     showSuccess('Energy level logged! AI will use this to suggest optimal study times.');
     loadRecommendations();
   } catch (error) {
-    console.error('Error logging energy:', error);
+    console.error('❌ Error logging energy:', error);
     showError('Failed to log energy level');
   }
 }
 
 async function recordStudySession(sessionData) {
+  console.log('🕐 Recording study session:', sessionData);
   try {
     const now = new Date();
     const startTime = new Date(now - sessionData.duration_minutes * 60000).toISOString();
     
-    await fetch(`${API_URL}/study-sessions`, {
+    const response = await fetch(`${API_URL}/study-sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -230,11 +349,17 @@ async function recordStudySession(sessionData) {
         end_time: now.toISOString()
       })
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    console.log('✅ Study session recorded');
     closeStudySessionModal();
     showSuccess('Study session recorded!');
     loadRecommendations();
   } catch (error) {
-    console.error('Error recording session:', error);
+    console.error('❌ Error recording session:', error);
     showError('Failed to record study session');
   }
 }
@@ -242,6 +367,11 @@ async function recordStudySession(sessionData) {
 // Rendering
 function renderTasks(tasksToRender) {
   const container = document.getElementById('tasks-container');
+  
+  if (!container) {
+    console.error('❌ Tasks container not found');
+    return;
+  }
   
   if (tasksToRender.length === 0) {
     container.innerHTML = `
@@ -260,15 +390,21 @@ function renderTasks(tasksToRender) {
   container.querySelectorAll('.task-card').forEach(card => {
     const taskId = card.dataset.taskId;
     
-    card.querySelector('.edit-task-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      editTask(taskId);
-    });
+    const editBtn = card.querySelector('.edit-task-btn');
+    if (editBtn) {
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        editTask(taskId);
+      });
+    }
     
-    card.querySelector('.delete-task-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      deleteTask(taskId);
-    });
+    const deleteBtn = card.querySelector('.delete-task-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteTask(taskId);
+      });
+    }
 
     card.querySelectorAll('.subtask-checkbox').forEach(checkbox => {
       checkbox.addEventListener('change', (e) => {
@@ -278,6 +414,8 @@ function renderTasks(tasksToRender) {
       });
     });
   });
+  
+  console.log(`✅ Rendered ${tasksToRender.length} tasks`);
 }
 
 function createTaskCard(task) {
@@ -286,10 +424,6 @@ function createTaskCard(task) {
   const dueDateStr = dueDate ? dueDate.toLocaleDateString('en-US', { 
     month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' 
   }) : 'No due date';
-
-  const progress = task.subtasks && task.subtasks.length > 0
-    ? (task.subtasks.filter(s => s.status === 'completed').length / task.subtasks.length) * 100
-    : 0;
 
   return `
     <div class="task-card priority-${task.priority}" data-task-id="${task.id}">
@@ -347,6 +481,11 @@ function createTaskCard(task) {
 
 function renderRecommendations(recs) {
   const container = document.getElementById('recommendations-container');
+  
+  if (!container) {
+    console.error('❌ Recommendations container not found');
+    return;
+  }
   
   if (recs.length === 0) {
     container.innerHTML = `
@@ -459,14 +598,23 @@ function filterTasksByType(type) {
   // Re-attach event listeners
   container.querySelectorAll('.task-card').forEach(card => {
     const taskId = card.dataset.taskId;
-    card.querySelector('.edit-task-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      editTask(taskId);
-    });
-    card.querySelector('.delete-task-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      deleteTask(taskId);
-    });
+    
+    const editBtn = card.querySelector('.edit-task-btn');
+    if (editBtn) {
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        editTask(taskId);
+      });
+    }
+    
+    const deleteBtn = card.querySelector('.delete-task-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteTask(taskId);
+      });
+    }
+    
     card.querySelectorAll('.subtask-checkbox').forEach(checkbox => {
       checkbox.addEventListener('change', (e) => {
         const subtaskId = e.target.dataset.subtaskId;
@@ -479,6 +627,7 @@ function filterTasksByType(type) {
 
 // Modal Management
 function openTaskModal(task = null) {
+  console.log('📝 Opening task modal', task ? '(edit mode)' : '(create mode)');
   const modal = document.getElementById('task-modal');
   const form = document.getElementById('task-form');
   const modalTitle = document.getElementById('modal-title');
@@ -514,20 +663,24 @@ function openTaskModal(task = null) {
 }
 
 function closeTaskModal() {
+  console.log('❌ Closing task modal');
   document.getElementById('task-modal').classList.remove('active');
 }
 
 function openEnergyModal() {
+  console.log('⚡ Opening energy modal');
   document.getElementById('energy-modal').classList.add('active');
   selectedEnergyLevel = null;
   document.querySelectorAll('.energy-btn').forEach(b => b.classList.remove('selected'));
 }
 
 function closeEnergyModal() {
+  console.log('❌ Closing energy modal');
   document.getElementById('energy-modal').classList.remove('active');
 }
 
 function openStudySessionModal() {
+  console.log('🕐 Opening study session modal');
   const modal = document.getElementById('session-modal');
   const taskSelect = document.getElementById('session-task');
   
@@ -541,12 +694,14 @@ function openStudySessionModal() {
 }
 
 function closeStudySessionModal() {
+  console.log('❌ Closing study session modal');
   document.getElementById('session-modal').classList.remove('active');
 }
 
 // Form Handlers
 async function handleTaskSubmit(e) {
   e.preventDefault();
+  console.log('💾 Submitting task form...');
   
   const taskId = document.getElementById('task-id').value;
   const taskData = {
@@ -576,6 +731,7 @@ async function handleTaskSubmit(e) {
 
 async function handleSessionSubmit(e) {
   e.preventDefault();
+  console.log('💾 Submitting study session form...');
   
   const sessionData = {
     task_id: document.getElementById('session-task').value || null,
@@ -592,6 +748,7 @@ async function handleSessionSubmit(e) {
 }
 
 function editTask(taskId) {
+  console.log('✏️ Editing task:', taskId);
   const task = tasks.find(t => t.id === taskId);
   if (task) {
     openTaskModal(task);
@@ -610,9 +767,11 @@ function escapeHtml(text) {
 }
 
 function showSuccess(message) {
-  alert(message); // Simple alert for now - could be replaced with a toast notification
+  console.log('✅', message);
+  alert(message); // TODO: Replace with toast notification
 }
 
 function showError(message) {
-  alert('Error: ' + message);
+  console.error('❌', message);
+  alert('Error: ' + message); // TODO: Replace with toast notification
 }

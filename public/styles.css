@@ -966,3 +966,135 @@ body {
     font-size: 1.5rem;
   }
 }
+
+/* Quick Create Section */
+.quick-create {
+  background: var(--surface-color);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  margin-top: 1.5rem;
+}
+
+.quick-create h3 {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.create-btn {
+  width: 100%;
+  padding: 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-color);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.create-btn:hover {
+  transform: translateX(4px);
+  box-shadow: var(--shadow-md);
+}
+
+.create-icon {
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  transition: all 0.3s ease;
+}
+
+.create-label {
+  flex: 1;
+  text-align: left;
+}
+
+/* Assignment Button */
+.assignment-btn {
+  border-color: #dbeafe;
+}
+
+.assignment-btn:hover {
+  background: #dbeafe;
+  border-color: #1e40af;
+}
+
+.assignment-btn:hover .create-icon {
+  background: #1e40af;
+  color: white;
+}
+
+/* Exam Button */
+.exam-btn {
+  border-color: #fce7f3;
+}
+
+.exam-btn:hover {
+  background: #fce7f3;
+  border-color: #be185d;
+}
+
+.exam-btn:hover .create-icon {
+  background: #be185d;
+  color: white;
+}
+
+/* Activity Button */
+.activity-btn {
+  border-color: #d1fae5;
+}
+
+.activity-btn:hover {
+  background: #d1fae5;
+  border-color: #065f46;
+}
+
+.activity-btn:hover .create-icon {
+  background: #065f46;
+  color: white;
+}
+
+/* Project Button */
+.project-btn {
+  border-color: #fef3c7;
+}
+
+.project-btn:hover {
+  background: #fef3c7;
+  border-color: #92400e;
+}
+
+.project-btn:hover .create-icon {
+  background: #92400e;
+  color: white;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .quick-create {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+
+  .quick-create h3 {
+    grid-column: 1 / -1;
+  }
+
+  .create-btn {
+    margin-bottom: 0;
+  }
+}
