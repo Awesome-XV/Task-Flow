@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskFlow - Smart Task Manager for Students</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <h1 class="logo">📚 TaskFlow</h1>
+        <p class="tagline">Smart Task Management for Students</p>
+      </div>
+      <div class="stats-bar">
+        <div class="stat-item">
+          <span class="stat-label">Total</span>
+          <span class="stat-value" id="stat-total">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Pending</span>
+          <span class="stat-value" id="stat-pending">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">In Progress</span>
+          <span class="stat-value" id="stat-progress">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Completed</span>
+          <span class="stat-value" id="stat-completed">0</span>
+        </div>
+        <div class="stat-item alert">
+          <span class="stat-label">Overdue</span>
+          <span class="stat-value" id="stat-overdue">0</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <nav class="nav">
+          <button class="nav-btn active" data-view="tasks">
+            <span class="icon">📝</span> All Tasks
+          </button>
+          <button class="nav-btn" data-view="assignments">
+            <span class="icon">📖</span> Assignments
+          </button>
+          <button class="nav-btn" data-view="exams">
+            <span class="icon">📊</span> Exams
+          </button>
+          <button class="nav-btn" data-view="activities">
+            <span class="icon">🎯</span> Activities
+          </button>
+          <button class="nav-btn" data-view="recommendations">
+            <span class="icon">🤖</span> AI Suggestions
+          </button>
+        </nav>
+
+        <div class="quick-actions">
+          <h3>Quick Actions</h3>
+          <button class="btn btn-primary" id="add-task-btn">+ New Task</button>
+          <button class="btn btn-secondary" id="log-energy-btn">⚡ Log Energy</button>
+          <button class="btn btn-secondary" id="study-session-btn">🕐 Study Session</button>
+        </div>
+      </aside>
+
+      <!-- Content Area -->
+      <main class="content">
+        <!-- Tasks View -->
+        <div id="tasks-view" class="view active">
+          <div class="view-header">
+            <h2>All Tasks</h2>
+            <div class="filters">
+              <select id="filter-priority" class="filter-select">
+                <option value="">All Priorities</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <select id="filter-status" class="filter-select">
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+          </div>
+          <div id="tasks-container" class="tasks-grid">
+            <!-- Tasks will be loaded here -->
+          </div>
+        </div>
+
+        <!-- Assignments View -->
+        <div id="assignments-view" class="view">
+          <div class="view-header">
+            <h2>Assignments</h2>
+          </div>
+          <div id="assignments-container" class="tasks-grid">
+            <!-- Assignments will be loaded here -->
+          </div>
+        </div>
+
+        <!-- Exams View -->
+        <div id="exams-view" class="view">
+          <div class="view-header">
+            <h2>Exams</h2>
+          </div>
+          <div id="exams-container" class="tasks-grid">
+            <!-- Exams will be loaded here -->
+          </div>
+        </div>
+
+        <!-- Activities View -->
+        <div id="activities-view" class="view">
+          <div class="view-header">
+            <h2>Extracurricular Activities</h2>
+          </div>
+          <div id="activities-container" class="tasks-grid">
+            <!-- Activities will be loaded here -->
+          </div>
+        </div>
+
+        <!-- Recommendations View -->
+        <div id="recommendations-view" class="view">
+          <div class="view-header">
+            <h2>AI Study Recommendations</h2>
+          </div>
+          <div id="recommendations-container" class="recommendations-grid">
+            <!-- Recommendations will be loaded here -->
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Add Task Modal -->
+  <div id="task-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modal-title">Add New Task</h2>
+        <button class="close-btn" id="close-modal">&times;</button>
+      </div>
+      <form id="task-form">
+        <input type="hidden" id="task-id">
+        
+        <div class="form-group">
+          <label for="task-title">Title *</label>
+          <input type="text" id="task-title" required>
+        </div>
+
+        <div class="form-group">
+          <label for="task-description">Description</label>
+          <textarea id="task-description" rows="3"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="task-type">Type *</label>
+            <select id="task-type" required>
+              <option value="assignment">Assignment</option>
+              <option value="exam">Exam</option>
+              <option value="activity">Activity</option>
+              <option value="project">Project</option>
+              <option value="study">Study Session</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="task-priority">Priority</label>
+            <select id="task-priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="task-due-date">Due Date</label>
+            <input type="datetime-local" id="task-due-date">
+          </div>
+
+          <div class="form-group">
+            <label for="task-hours">Estimated Hours</label>
+            <input type="number" id="task-hours" min="0.5" step="0.5" placeholder="e.g., 2.5">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="task-energy">Preferred Energy Level</label>
+          <select id="task-energy">
+            <option value="">Any</option>
+            <option value="high">High Energy</option>
+            <option value="medium">Medium Energy</option>
+            <option value="low">Low Energy</option>
+          </select>
+          <small>AI will suggest study times matching your energy pattern</small>
+        </div>
+
+        <div class="form-group" id="task-status-group" style="display: none;">
+          <label for="task-status">Status</label>
+          <select id="task-status">
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-task-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Energy Log Modal -->
+  <div id="energy-modal" class="modal">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Log Your Energy Level</h2>
+        <button class="close-btn" id="close-energy-modal">&times;</button>
+      </div>
+      <form id="energy-form">
+        <div class="form-group">
+          <label>How energetic do you feel right now?</label>
+          <div class="energy-options">
+            <button type="button" class="energy-btn" data-level="low">
+              <span class="energy-icon">😴</span>
+              <span>Low Energy</span>
+            </button>
+            <button type="button" class="energy-btn" data-level="medium">
+              <span class="energy-icon">😊</span>
+              <span>Medium Energy</span>
+            </button>
+            <button type="button" class="energy-btn" data-level="high">
+              <span class="energy-icon">⚡</span>
+              <span>High Energy</span>
+            </button>
+          </div>
+        </div>
+        <p class="help-text">This helps AI suggest optimal study times based on your energy patterns</p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Study Session Modal -->
+  <div id="session-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Record Study Session</h2>
+        <button class="close-btn" id="close-session-modal">&times;</button>
+      </div>
+      <form id="session-form">
+        <div class="form-group">
+          <label for="session-task">Task</label>
+          <select id="session-task" required>
+            <option value="">Select a task...</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="session-duration">Duration (minutes)</label>
+            <input type="number" id="session-duration" min="1" required>
+          </div>
+
+          <div class="form-group">
+            <label for="session-energy">Energy Level</label>
+            <select id="session-energy" required>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="session-productivity">Productivity Rating</label>
+          <div class="rating-container">
+            <input type="range" id="session-productivity" min="1" max="10" value="7">
+            <span id="productivity-value">7</span>/10
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-session-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Session</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
