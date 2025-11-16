@@ -245,7 +245,7 @@ function switchView(view) {
   if (view === 'recommendations') {
     loadRecommendations();
   } else if (view === 'schedule') {
-    renderSchedule();
+    renderScheduleEmptyState();
   } else if (view === 'recurring') {
     renderRecurringEvents();
   } else if (view !== 'tasks') {
