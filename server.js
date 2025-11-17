@@ -983,11 +983,11 @@ function generateSmartSchedule(targetDate) {
   });
   
   let slotIndex = 0;
-  const maxHoursPerDay = Math.floor(timeSlots.length * 0.7); // Don't overschedule - leave 30% buffer
+  const maxHoursPerDay = timeSlots.length; // Use all available time slots
   let hoursScheduledToday = 0;
   
   for (const task of sortedTasks) {
-    if (slotIndex >= timeSlots.length || hoursScheduledToday >= maxHoursPerDay) break;
+    if (slotIndex >= timeSlots.length) break;
     
     const estimatedHours = task.estimated_hours || 1;
     const daysUntilDue = task.due_date ? Math.max(0, (new Date(task.due_date) - today) / (1000 * 60 * 60 * 24)) : 999;
@@ -997,10 +997,11 @@ function generateSmartSchedule(targetDate) {
     let hoursToScheduleToday;
     if (daysUntilDue <= 1) {
       // Due today or overdue - schedule as much as possible
-      hoursToScheduleToday = Math.min(estimatedHours - (task.completed_hours || 0), timeSlots.length - slotIndex);
+      const remainingHours = estimatedHours ? estimatedHours - (task.completed_hours || 0) : 1;
+      hoursToScheduleToday = Math.min(remainingHours, timeSlots.length - slotIndex);
     } else {
       // Spread work over remaining days
-      const remainingHours = estimatedHours - (task.completed_hours || 0);
+      const remainingHours = estimatedHours ? estimatedHours - (task.completed_hours || 0) : 1;
       const hoursPerDay = 6; // Average productive hours per day
       const daysNeeded = Math.ceil(remainingHours / hoursPerDay);
       
@@ -1019,7 +1020,9 @@ function generateSmartSchedule(targetDate) {
     
     if (hoursToScheduleToday <= 0) continue;
     
-    const requiredSlots = Math.ceil(hoursToScheduleToday);
+    // Use actual hours, round to nearest 0.5 hour increment
+    const actualHours = Math.ceil(hoursToScheduleToday * 2) / 2;
+    const requiredSlots = Math.ceil(actualHours);
     
     // Find best time slot based on energy level
     let bestSlotIndex = slotIndex;
